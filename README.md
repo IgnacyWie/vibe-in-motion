@@ -77,6 +77,8 @@ Example:
 - `/whoami` shows your Telegram chat ID and the currently selected workspace
 - `/status` shows your Telegram chat ID and active workspace alias
 
+Telegram command suggestions are registered automatically on bot startup. Because Telegram only suggests command names without spaces and does not allow hyphens in command names, the bot exposes suggestion-friendly aliases such as `/repo_list`, `/repo_use`, and `/codex_ship` in addition to the original forms.
+
 ### Workspace Management
 
 - `/repo list` lists all saved workspace aliases and paths
@@ -86,6 +88,7 @@ Example:
 - `/repo add <alias> <path-under-Developer>` adds a new workspace alias
 - `/repo set <alias> <path-under-Developer>` updates an existing workspace alias
 - `/repo remove <alias>` removes a saved workspace alias
+- Suggested aliases: `/repo_list`, `/repo_current`, `/repo_pull`, `/repo_use`, `/repo_add`, `/repo_set`, `/repo_remove`
 
 Examples:
 
@@ -105,6 +108,7 @@ Examples:
 - `/c <prompt>` is a short alias for `/codex`
 - `/codex-ship <prompt>` runs `codex exec`, stages the resulting git changes, creates a commit message, commits, pushes, and watches GitHub deploy workflows
 - `/cs <prompt>` is a short alias for `/codex-ship`
+- Suggested alias: `/codex_ship <prompt>`
 
 Examples:
 

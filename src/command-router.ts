@@ -27,6 +27,28 @@ type CommandContext = {
   text: string
 }
 
+export type TelegramBotCommand = {
+  command: string
+  description: string
+}
+
+export const TELEGRAM_BOT_COMMANDS: TelegramBotCommand[] = [
+  { command: 'start', description: 'Show available commands' },
+  { command: 'help', description: 'Show available commands' },
+  { command: 'status', description: 'Show the current chat status' },
+  { command: 'whoami', description: 'Show your chat ID and active workspace' },
+  { command: 'repo_list', description: 'List saved workspaces' },
+  { command: 'repo_current', description: 'Show the active workspace' },
+  { command: 'repo_pull', description: 'Clone and save a GitHub repo workspace' },
+  { command: 'repo_use', description: 'Switch to a saved workspace alias' },
+  { command: 'repo_add', description: 'Save a workspace alias for an existing path' },
+  { command: 'repo_set', description: 'Update a saved workspace alias path' },
+  { command: 'repo_remove', description: 'Remove a saved workspace alias' },
+  { command: 'codex', description: 'Run Codex in the active workspace' },
+  { command: 'codex_ship', description: 'Run Codex, commit, push, and watch deploys' },
+  { command: 'run', description: 'Run an allowlisted command in the workspace' }
+]
+
 export function createCommandRouter({
   codexRunner = runCodexTask,
   gitCloneRunner = cloneGitHubRepo,
@@ -45,7 +67,8 @@ export function createCommandRouter({
       }
 
       try {
-        const [command, ...args] = splitCommand(trimmedText)
+        const [rawCommand, ...rawArgs] = splitCommand(trimmedText)
+        const { command, args } = expandCommandAlias(rawCommand, rawArgs)
 
         switch (command) {
           case '/help':
@@ -72,6 +95,7 @@ export function createCommandRouter({
               workspaceStore
             })
           case '/codex-ship':
+          case '/codex_ship':
           case '/cs':
             return await handleCodexShipCommand({
               args,
@@ -514,6 +538,36 @@ function buildWhoAmIMessage(chatId: string | number, activeWorkspace: WorkspaceR
 
 function splitCommand(text: string) {
   return text.match(/"[^"]*"|'[^']*'|\S+/g)?.map(token => token.replace(/^['"]|['"]$/g, '')) || []
+}
+
+function expandCommandAlias(rawCommand: string | undefined, args: string[]) {
+  const command = normalizeCommand(rawCommand)
+
+  switch (command) {
+    case '/repo_list':
+      return { command: '/repo', args: ['list', ...args] }
+    case '/repo_current':
+      return { command: '/repo', args: ['current', ...args] }
+    case '/repo_pull':
+      return { command: '/repo', args: ['pull', ...args] }
+    case '/repo_use':
+      return { command: '/repo', args: ['use', ...args] }
+    case '/repo_add':
+      return { command: '/repo', args: ['add', ...args] }
+    case '/repo_set':
+      return { command: '/repo', args: ['set', ...args] }
+    case '/repo_remove':
+      return { command: '/repo', args: ['remove', ...args] }
+    default:
+      return { command, args }
+  }
+}
+
+function normalizeCommand(command: string | undefined) {
+  return String(command || '')
+    .trim()
+    .replace(/@[^@\s]+$/, '')
+    .toLowerCase()
 }
 
 function getRepoNameFromSlug(repoSlug: string) {

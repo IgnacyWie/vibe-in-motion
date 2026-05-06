@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 
-import { createCommandRouter } from '../src/command-router'
+import { createCommandRouter, TELEGRAM_BOT_COMMANDS } from '../src/command-router'
 import { openDatabase } from '../src/storage/database'
 import { createWorkspaceStore } from '../src/storage/workspace-store'
 
@@ -242,6 +242,47 @@ test('short codex alias uses the active workspace', async () => {
   assert.match(reply, /Prompt: add an alias test/)
 })
 
+test('underscored codex ship alias uses the active workspace', async () => {
+  process.env.DEVELOPER_ROOT = '/Users/ignacywielogorski/Developer'
+  const workspaceStore = createWorkspaceStore(openDatabase(':memory:'))
+  workspaceStore.upsertWorkspace('vibe', 'vibe-in-motion')
+  workspaceStore.setActiveWorkspace(12345, 'vibe')
+
+  const router = createCommandRouter({
+    workspaceStore,
+    codexRunner: async ({ prompt, workspacePath }) => ({
+      ok: true,
+      exitCode: 0,
+      message: `Prompt: ${prompt}\nPath: ${workspacePath}`,
+      output: ''
+    }),
+    gitShipRunner: async () => ({
+      ok: true,
+      exitCode: 0,
+      branch: 'main',
+      commitSha: 'ghi789',
+      message: 'Pushed.'
+    }),
+    deploymentWatcher: async input => ({
+      commitSha: input.commitSha,
+      conclusion: 'success',
+      name: 'deploy',
+      url: 'https://github.com/example/repo/actions/runs/3'
+    }),
+    notifyChat: async () => {}
+  })
+
+  const reply = await router.handleCommand({
+    chatId: 12345,
+    text: '/codex_ship ship via suggested command'
+  })
+
+  assert.match(reply, /Workspace: vibe/)
+  assert.match(reply, /Codex exit code: 0/)
+  assert.match(reply, /Git exit code: 0/)
+  assert.match(reply, /Watching GitHub Actions for commit ghi789\./)
+})
+
 test('run command uses the active workspace cwd', async () => {
   process.env.DEVELOPER_ROOT = '/Users/ignacywielogorski/Developer'
   const workspaceStore = createWorkspaceStore(openDatabase(':memory:'))
@@ -264,6 +305,43 @@ test('run command uses the active workspace cwd', async () => {
 
   assert.match(reply, /Working directory: \/Users\/ignacywielogorski\/Developer\/vibe-in-motion/)
   assert.match(reply, /Command: git status/)
+})
+
+test('repo command aliases map to repo subcommands', async () => {
+  process.env.DEVELOPER_ROOT = '/Users/ignacywielogorski/Developer'
+  const workspaceStore = createWorkspaceStore(openDatabase(':memory:'))
+  const router = createCommandRouter({ workspaceStore })
+
+  const saveReply = await router.handleCommand({
+    chatId: 12345,
+    text: '/repo_add vibe vibe-in-motion'
+  })
+
+  const useReply = await router.handleCommand({
+    chatId: 12345,
+    text: '/repo_use vibe'
+  })
+
+  const currentReply = await router.handleCommand({
+    chatId: 12345,
+    text: '/repo_current'
+  })
+
+  const listReply = await router.handleCommand({
+    chatId: 12345,
+    text: '/repo_list'
+  })
+
+  assert.match(saveReply, /Workspace saved\./)
+  assert.match(useReply, /Active workspace set to vibe/)
+  assert.match(currentReply, /Current workspace: vibe/)
+  assert.match(listReply, /\* vibe: /)
+})
+
+test('telegram command catalog uses Telegram-safe command names', () => {
+  for (const { command } of TELEGRAM_BOT_COMMANDS) {
+    assert.match(command, /^[a-z0-9_]{1,32}$/)
+  }
 })
 
 test('run command requires an active workspace', async () => {

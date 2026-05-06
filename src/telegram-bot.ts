@@ -1,5 +1,5 @@
 import { isAllowedTelegramChat } from './integrations/auth'
-import { createCommandRouter } from './command-router'
+import { createCommandRouter, TELEGRAM_BOT_COMMANDS } from './command-router'
 import {
   createTelegramClient,
   getIncomingMessage,
@@ -31,6 +31,9 @@ export async function startTelegramBot({
   workspaceStore = createWorkspaceStore(openDatabase())
 }: StartTelegramBotOptions = {}) {
   const bot = await telegramClient.getMe()
+  await telegramClient.setMyCommands({
+    commands: TELEGRAM_BOT_COMMANDS
+  })
   logger.log(`Telegram bot connected as @${bot.username || bot.id}`)
 
   let offset = 0
@@ -126,6 +129,7 @@ function requiresImmediateAcknowledgement(text: string) {
     command === '/codex' ||
     command === '/c' ||
     command === '/codex-ship' ||
+    command === '/codex_ship' ||
     command === '/cs' ||
     command === '/run' ||
     command === '/r'

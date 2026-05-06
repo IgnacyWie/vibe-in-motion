@@ -1,5 +1,10 @@
 type TelegramFetch = typeof fetch
 
+type TelegramBotCommand = {
+  command: string
+  description: string
+}
+
 type TelegramApiResponse<TResult> = {
   ok: boolean
   result: TResult
@@ -42,6 +47,10 @@ type SendMessageOptions = {
   text: string
 }
 
+type SetMyCommandsOptions = {
+  commands: TelegramBotCommand[]
+}
+
 type CreateTelegramClientOptions = {
   token?: string
   baseUrl?: string
@@ -69,6 +78,12 @@ export function createTelegramClient({
     return callTelegramApi('sendMessage', {
       chat_id: chatId,
       text
+    })
+  }
+
+  async function setMyCommands({ commands }: SetMyCommandsOptions) {
+    return callTelegramApi<boolean>('setMyCommands', {
+      commands
     })
   }
 
@@ -101,6 +116,7 @@ export function createTelegramClient({
   return {
     getMe,
     getUpdates,
+    setMyCommands,
     sendMessage
   }
 }
