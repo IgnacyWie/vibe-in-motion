@@ -76,7 +76,22 @@ export async function handleUpdate({
     return
   }
 
-  const router = createCommandRouter({ workspaceStore })
+  const router = createCommandRouter({
+    workspaceStore,
+    notifyChat: async (targetChatId, text) => {
+      await telegramClient.sendMessage({
+        chatId: Number(targetChatId),
+        text
+      })
+    }
+  })
+  if (requiresImmediateAcknowledgement(message.text)) {
+    await telegramClient.sendMessage({
+      chatId: message.chatId,
+      text: 'Processing...'
+    })
+  }
+
   const reply = await router.handleCommand({
     chatId: message.chatId,
     text: message.text
@@ -102,4 +117,17 @@ function sleep(durationMs: number) {
   return new Promise(resolve => {
     setTimeout(resolve, durationMs)
   })
+}
+
+function requiresImmediateAcknowledgement(text: string) {
+  const command = text.trim().split(/\s+/)[0]
+
+  return (
+    command === '/codex' ||
+    command === '/c' ||
+    command === '/codex-ship' ||
+    command === '/cs' ||
+    command === '/run' ||
+    command === '/r'
+  )
 }

@@ -2,6 +2,7 @@ import fs from 'node:fs'
 
 import { runCodexTask } from './integrations/codex'
 import { shipGitChanges } from './integrations/git'
+import { watchGitHubDeployment } from './integrations/github'
 import { runShellCommand } from './integrations/shell'
 import { resolveWorkspacePath, type WorkspaceStore } from './storage/workspace-store'
 
@@ -14,6 +15,8 @@ type CommandRouterDependencies = {
   shellRunner?: typeof runShellCommand
   codexRunner?: typeof runCodexTask
   gitShipRunner?: typeof shipGitChanges
+  deploymentWatcher?: typeof watchGitHubDeployment
+  notifyChat?: (chatId: string | number, message: string) => Promise<void>
   workspaceStore: WorkspaceStore
 }
 
@@ -25,6 +28,8 @@ type CommandContext = {
 export function createCommandRouter({
   codexRunner = runCodexTask,
   gitShipRunner = shipGitChanges,
+  deploymentWatcher = watchGitHubDeployment,
+  notifyChat,
   shellRunner = runShellCommand,
   workspaceStore
 }: CommandRouterDependencies) {
@@ -50,6 +55,7 @@ export function createCommandRouter({
           case '/repo':
             return handleRepoCommand({ args, chatId, workspaceStore })
           case '/codex':
+          case '/c':
             return await handleCodexCommand({
               args,
               chatId,
@@ -57,14 +63,18 @@ export function createCommandRouter({
               workspaceStore
             })
           case '/codex-ship':
+          case '/cs':
             return await handleCodexShipCommand({
               args,
               chatId,
               codexRunner,
               gitShipRunner,
+              deploymentWatcher,
+              notifyChat,
               workspaceStore
             })
           case '/run':
+          case '/r':
             return await handleRunCommand({
               args,
               chatId,
@@ -122,12 +132,16 @@ async function handleCodexShipCommand({
   chatId,
   codexRunner,
   gitShipRunner,
+  deploymentWatcher,
+  notifyChat,
   workspaceStore
 }: {
   args: string[]
   chatId: string | number
   codexRunner: typeof runCodexTask
   gitShipRunner: typeof shipGitChanges
+  deploymentWatcher: typeof watchGitHubDeployment
+  notifyChat?: (chatId: string | number, message: string) => Promise<void>
   workspaceStore: WorkspaceStore
 }) {
   const prompt = args.join(' ').trim()
@@ -161,6 +175,19 @@ async function handleCodexShipCommand({
     workspacePath: workspace.path
   })
 
+  const watchingMessage =
+    gitResult.ok && gitResult.branch && gitResult.commitSha
+      ? startDeploymentWatch({
+          branch: gitResult.branch,
+          chatId,
+          commitSha: gitResult.commitSha,
+          deploymentWatcher,
+          notifyChat,
+          workspaceAlias: workspace.alias,
+          workspacePath: workspace.path
+        })
+      : ''
+
   return [
     `Workspace: ${workspace.alias}`,
     `Codex exit code: ${codexResult.exitCode}`,
@@ -168,7 +195,8 @@ async function handleCodexShipCommand({
     '',
     codexResult.message,
     '',
-    gitResult.message
+    gitResult.message,
+    watchingMessage ? `\n${watchingMessage}` : ''
   ].join('\n')
 }
 
@@ -335,10 +363,62 @@ function buildHelpMessage(activeWorkspace: WorkspaceRecord | null) {
     '/repo add <alias> <path-under-Developer>',
     '/repo set <alias> <path-under-Developer>',
     '/repo remove <alias>',
-    '/codex <prompt>',
-    '/codex-ship <prompt>',
-    '/run <allowlisted command>'
+    '/codex <prompt> or /c <prompt>',
+    '/codex-ship <prompt> or /cs <prompt>',
+    '/run <allowlisted command> or /r <allowlisted command>'
   ].join('\n')
+}
+
+function startDeploymentWatch({
+  branch,
+  chatId,
+  commitSha,
+  deploymentWatcher,
+  notifyChat,
+  workspaceAlias,
+  workspacePath
+}: {
+  branch: string
+  chatId: string | number
+  commitSha: string
+  deploymentWatcher: typeof watchGitHubDeployment
+  notifyChat?: (chatId: string | number, message: string) => Promise<void>
+  workspaceAlias: string
+  workspacePath: string
+}) {
+  if (!notifyChat) {
+    return ''
+  }
+
+  void deploymentWatcher({
+    workspacePath,
+    branch,
+    commitSha
+  })
+    .then(async result => {
+      await notifyChat(
+        chatId,
+        [
+          `Deployment finished for ${workspaceAlias}.`,
+          `Workflow: ${result.name}`,
+          `Conclusion: ${result.conclusion}`,
+          `Commit: ${result.commitSha}`,
+          result.url
+        ].join('\n')
+      )
+    })
+    .catch(async error => {
+      await notifyChat(
+        chatId,
+        [
+          `Deployment watch failed for ${workspaceAlias}.`,
+          `Commit: ${commitSha}`,
+          error instanceof Error ? error.message : 'Unknown error.'
+        ].join('\n')
+      )
+    })
+
+  return `Watching GitHub Actions for commit ${commitSha}.`
 }
 
 function buildStatusMessage(chatId: string | number, activeWorkspace: WorkspaceRecord | null) {

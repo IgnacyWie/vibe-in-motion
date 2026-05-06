@@ -5,7 +5,18 @@ export type GitShipInput = {
   workspacePath: string
 }
 
-export async function shipGitChanges({ prompt, workspacePath }: GitShipInput) {
+export type GitShipResult = {
+  ok: boolean
+  exitCode: number
+  message: string
+  branch?: string
+  commitSha?: string
+}
+
+export async function shipGitChanges({
+  prompt,
+  workspacePath
+}: GitShipInput): Promise<GitShipResult> {
   const timeoutMs = Number(process.env.GIT_TIMEOUT_MS || 5 * 60 * 1000)
 
   await assertGitRepo(workspacePath, timeoutMs)
@@ -40,17 +51,22 @@ export async function shipGitChanges({ prompt, workspacePath }: GitShipInput) {
     return {
       ok: false,
       exitCode: commitResult.exitCode,
-      message: truncateText(commitResult.output || 'git commit failed.')
+      message: truncateText(commitResult.output || 'git commit failed.'),
+      branch
     }
   }
 
+  const commitSha = await getCommitSha(workspacePath, timeoutMs)
   const pushResult = await runGit(['push'], workspacePath, timeoutMs)
 
   return {
     ok: pushResult.exitCode === 0,
     exitCode: pushResult.exitCode,
+    branch,
+    commitSha,
     message: [
       `Branch: ${branch}`,
+      `Commit SHA: ${commitSha}`,
       `Commit: ${commitMessage}`,
       `Files: ${changedFiles.join(', ')}`,
       '',
@@ -108,6 +124,22 @@ async function getCurrentBranch(workspacePath: string, timeoutMs: number) {
   }
 
   return branch
+}
+
+async function getCommitSha(workspacePath: string, timeoutMs: number) {
+  const result = await runGit(['rev-parse', 'HEAD'], workspacePath, timeoutMs)
+
+  if (result.exitCode !== 0) {
+    throw new Error(result.output || 'git rev-parse HEAD failed.')
+  }
+
+  const commitSha = result.output.trim()
+
+  if (!commitSha) {
+    throw new Error('Could not determine commit SHA.')
+  }
+
+  return commitSha
 }
 
 function buildCommitMessage(prompt: string, changedFiles: string[]) {

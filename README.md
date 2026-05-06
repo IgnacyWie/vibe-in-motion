@@ -99,18 +99,23 @@ Examples:
 ### Codex Commands
 
 - `/codex <prompt>` runs `codex exec` in the active workspace without committing or pushing
-- `/codex-ship <prompt>` runs `codex exec`, stages the resulting git changes, creates a commit message, commits, and pushes
+- `/c <prompt>` is a short alias for `/codex`
+- `/codex-ship <prompt>` runs `codex exec`, stages the resulting git changes, creates a commit message, commits, pushes, and watches GitHub deploy workflows
+- `/cs <prompt>` is a short alias for `/codex-ship`
 
 Examples:
 
 ```text
 /codex Add a /health route for the API server
+/c Add a setup command
 /codex-ship Add a README section describing setup commands
+/cs Ship a fix for the deploy watcher
 ```
 
 ### Shell Commands
 
 - `/run <allowlisted command>` runs a command inside the active workspace
+- `/r <allowlisted command>` is a short alias for `/run`
 
 This command is intentionally restricted to prefixes allowed by `RUN_COMMAND_ALLOWLIST`.
 
@@ -118,6 +123,7 @@ Examples:
 
 ```text
 /run git status
+/r pnpm test
 /run pnpm test
 /run pnpm build
 ```
