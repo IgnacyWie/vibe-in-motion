@@ -40,8 +40,12 @@ test('repo pull clones a GitHub slug over ssh and selects the workspace', async 
   process.env.DEVELOPER_ROOT = developerRoot
   const workspaceStore = createWorkspaceStore(openDatabase(':memory:'))
   const cloneCalls: Array<{ destinationPath: string; repoSlug: string }> = []
+  const notifications: string[] = []
   const router = createCommandRouter({
     workspaceStore,
+    notifyChat: async (_chatId, message) => {
+      notifications.push(message)
+    },
     gitCloneRunner: async input => {
       cloneCalls.push(input)
       fs.mkdirSync(input.destinationPath, { recursive: true })
@@ -66,10 +70,42 @@ test('repo pull clones a GitHub slug over ssh and selects the workspace', async 
   assert.match(reply, /Repository pulled and workspace saved\./)
   assert.match(reply, /Alias: vibe-in-motion/)
   assert.match(reply, /Remote: git@github\.com:IgnacyWie\/vibe-in-motion\.git/)
+  assert.equal(notifications.length, 1)
+  assert.equal(notifications[0], 'Chat ID: 12345\nActive workspace: vibe-in-motion')
 
   const activeWorkspace = workspaceStore.getActiveWorkspace(12345)
   assert.equal(activeWorkspace?.alias, 'vibe-in-motion')
   assert.equal(activeWorkspace?.path, path.join(developerRoot, 'vibe-in-motion'))
+})
+
+test('repo pull sends a failure status message when cloning fails', async () => {
+  const developerRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-developer-'))
+  process.env.DEVELOPER_ROOT = developerRoot
+  const workspaceStore = createWorkspaceStore(openDatabase(':memory:'))
+  const notifications: string[] = []
+  const router = createCommandRouter({
+    workspaceStore,
+    notifyChat: async (_chatId, message) => {
+      notifications.push(message)
+    },
+    gitCloneRunner: async input => ({
+      ok: false,
+      exitCode: 128,
+      message: `fatal: repository '${input.repoSlug}' not found`,
+      remoteUrl: `git@github.com:${input.repoSlug}.git`
+    })
+  })
+
+  const reply = await router.handleCommand({
+    chatId: 12345,
+    text: '/repo pull IgnacyWie/missing-repo'
+  })
+
+  assert.match(reply, /Clone failed for git@github\.com:IgnacyWie\/missing-repo\.git/)
+  assert.match(reply, /Exit code: 128/)
+  assert.equal(notifications.length, 1)
+  assert.match(notifications[0], /Clone failed for git@github\.com:IgnacyWie\/missing-repo\.git/)
+  assert.match(notifications[0], /fatal: repository 'IgnacyWie\/missing-repo' not found/)
 })
 
 test('repo pull supports a custom workspace alias', async () => {

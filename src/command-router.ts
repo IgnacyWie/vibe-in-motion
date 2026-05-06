@@ -56,7 +56,13 @@ export function createCommandRouter({
           case '/status':
             return buildStatusMessage(chatId, workspaceStore.getActiveWorkspace(chatId))
           case '/repo':
-            return await handleRepoCommand({ args, chatId, gitCloneRunner, workspaceStore })
+            return await handleRepoCommand({
+              args,
+              chatId,
+              gitCloneRunner,
+              notifyChat,
+              workspaceStore
+            })
           case '/codex':
           case '/c':
             return await handleCodexCommand({
@@ -245,11 +251,13 @@ async function handleRepoCommand({
   args,
   chatId,
   gitCloneRunner,
+  notifyChat,
   workspaceStore
 }: {
   args: string[]
   chatId: string | number
   gitCloneRunner: typeof cloneGitHubRepo
+  notifyChat?: (chatId: string | number, message: string) => Promise<void>
   workspaceStore: WorkspaceStore
 }) {
   const subcommand = args[0]
@@ -301,6 +309,18 @@ async function handleRepoCommand({
       })
 
       if (!cloneResult.ok) {
+        if (notifyChat) {
+          await notifyChat(
+            chatId,
+            [
+              `Clone failed for ${cloneResult.remoteUrl}`,
+              `Exit code: ${cloneResult.exitCode}`,
+              '',
+              cloneResult.message
+            ].join('\n')
+          )
+        }
+
         return [
           `Clone failed for ${cloneResult.remoteUrl}`,
           `Exit code: ${cloneResult.exitCode}`,
@@ -311,6 +331,10 @@ async function handleRepoCommand({
 
       const workspace = workspaceStore.upsertWorkspace(normalizedAlias, repoName)
       workspaceStore.setActiveWorkspace(chatId, workspace.alias)
+
+      if (notifyChat) {
+        await notifyChat(chatId, buildStatusMessage(chatId, workspace))
+      }
 
       return [
         'Repository pulled and workspace saved.',
