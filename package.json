@@ -2,10 +2,10 @@
   "name": "vibe-in-motion",
   "version": "1.0.0",
   "description": "Closed-loop Telegram automation scaffold",
-  "main": "dist/server.js",
+  "main": "dist/src/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "start": "node dist/server.js",
+    "start": "node dist/src/server.js",
     "build": "tsc --project tsconfig.json",
     "test": "node --import tsx --test tests/*.test.ts",
     "deploy:mac": "bash scripts/deploy-mac.sh"

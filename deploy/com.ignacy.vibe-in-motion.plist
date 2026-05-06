@@ -8,7 +8,7 @@
     <key>ProgramArguments</key>
     <array>
       <string>__NODE_BIN__</string>
-      <string>dist/server.js</string>
+      <string>dist/src/server.js</string>
     </array>
 
     <key>WorkingDirectory</key>

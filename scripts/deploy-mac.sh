@@ -61,6 +61,8 @@ install_service() {
 
   echo "Service installed: $SERVICE_ID"
   echo "Plist: $TARGET_PLIST"
+  echo "Check status with: bash scripts/deploy-mac.sh status"
+  echo "Check logs with:   bash scripts/deploy-mac.sh logs"
 }
 
 restart_service() {
