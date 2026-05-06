@@ -81,6 +81,7 @@ Example:
 
 - `/repo list` lists all saved workspace aliases and paths
 - `/repo current` shows the currently active workspace for this chat
+- `/repo pull <owner>/<repo> [alias]` clones a GitHub repo into `DEVELOPER_ROOT` over SSH, saves it as a workspace, and selects it
 - `/repo use <alias>` switches this chat to a saved workspace
 - `/repo add <alias> <path-under-Developer>` adds a new workspace alias
 - `/repo set <alias> <path-under-Developer>` updates an existing workspace alias
@@ -91,6 +92,8 @@ Examples:
 ```text
 /repo add vibe vibe-in-motion
 /repo add api my-api
+/repo pull IgnacyWie/vibe-in-motion
+/repo pull IgnacyWie/vibe-in-motion vibe
 /repo use vibe
 /repo current
 /repo list

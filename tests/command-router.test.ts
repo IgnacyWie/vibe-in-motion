@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import test from 'node:test'
 
 import { createCommandRouter } from '../src/command-router'
@@ -30,6 +33,127 @@ test('repo commands persist workspaces and allow selecting them', async () => {
   })
 
   assert.match(currentReply, /Current workspace: vibe/)
+})
+
+test('repo pull clones a GitHub slug over ssh and selects the workspace', async () => {
+  const developerRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-developer-'))
+  process.env.DEVELOPER_ROOT = developerRoot
+  const workspaceStore = createWorkspaceStore(openDatabase(':memory:'))
+  const cloneCalls: Array<{ destinationPath: string; repoSlug: string }> = []
+  const router = createCommandRouter({
+    workspaceStore,
+    gitCloneRunner: async input => {
+      cloneCalls.push(input)
+      fs.mkdirSync(input.destinationPath, { recursive: true })
+
+      return {
+        ok: true,
+        exitCode: 0,
+        message: 'Cloned.',
+        remoteUrl: `git@github.com:${input.repoSlug}.git`
+      }
+    }
+  })
+
+  const reply = await router.handleCommand({
+    chatId: 12345,
+    text: '/repo pull IgnacyWie/vibe-in-motion'
+  })
+
+  assert.equal(cloneCalls.length, 1)
+  assert.equal(cloneCalls[0].repoSlug, 'IgnacyWie/vibe-in-motion')
+  assert.equal(cloneCalls[0].destinationPath, path.join(developerRoot, 'vibe-in-motion'))
+  assert.match(reply, /Repository pulled and workspace saved\./)
+  assert.match(reply, /Alias: vibe-in-motion/)
+  assert.match(reply, /Remote: git@github\.com:IgnacyWie\/vibe-in-motion\.git/)
+
+  const activeWorkspace = workspaceStore.getActiveWorkspace(12345)
+  assert.equal(activeWorkspace?.alias, 'vibe-in-motion')
+  assert.equal(activeWorkspace?.path, path.join(developerRoot, 'vibe-in-motion'))
+})
+
+test('repo pull supports a custom workspace alias', async () => {
+  const developerRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-developer-'))
+  process.env.DEVELOPER_ROOT = developerRoot
+  const workspaceStore = createWorkspaceStore(openDatabase(':memory:'))
+  const router = createCommandRouter({
+    workspaceStore,
+    gitCloneRunner: async input => {
+      fs.mkdirSync(input.destinationPath, { recursive: true })
+
+      return {
+        ok: true,
+        exitCode: 0,
+        message: 'Cloned.',
+        remoteUrl: `git@github.com:${input.repoSlug}.git`
+      }
+    }
+  })
+
+  const reply = await router.handleCommand({
+    chatId: 12345,
+    text: '/repo pull IgnacyWie/vibe-in-motion vibe'
+  })
+
+  assert.match(reply, /Alias: vibe/)
+  assert.equal(workspaceStore.getActiveWorkspace(12345)?.alias, 'vibe')
+})
+
+test('repo pull refuses to overwrite an existing Developer path', async () => {
+  const developerRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-developer-'))
+  fs.mkdirSync(path.join(developerRoot, 'vibe-in-motion'))
+  process.env.DEVELOPER_ROOT = developerRoot
+  const workspaceStore = createWorkspaceStore(openDatabase(':memory:'))
+  let cloneCalled = false
+  const router = createCommandRouter({
+    workspaceStore,
+    gitCloneRunner: async input => {
+      cloneCalled = true
+
+      return {
+        ok: true,
+        exitCode: 0,
+        message: 'Cloned.',
+        remoteUrl: `git@github.com:${input.repoSlug}.git`
+      }
+    }
+  })
+
+  const reply = await router.handleCommand({
+    chatId: 12345,
+    text: '/repo pull IgnacyWie/vibe-in-motion'
+  })
+
+  assert.equal(cloneCalled, false)
+  assert.match(reply, /Path already exists under Developer: vibe-in-motion/)
+})
+
+test('repo pull validates custom alias before cloning', async () => {
+  const developerRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-developer-'))
+  process.env.DEVELOPER_ROOT = developerRoot
+  const workspaceStore = createWorkspaceStore(openDatabase(':memory:'))
+  let cloneCalled = false
+  const router = createCommandRouter({
+    workspaceStore,
+    gitCloneRunner: async input => {
+      cloneCalled = true
+
+      return {
+        ok: true,
+        exitCode: 0,
+        message: 'Cloned.',
+        remoteUrl: `git@github.com:${input.repoSlug}.git`
+      }
+    }
+  })
+
+  const reply = await router.handleCommand({
+    chatId: 12345,
+    text: '/repo pull IgnacyWie/vibe-in-motion bad.alias'
+  })
+
+  assert.equal(cloneCalled, false)
+  assert.match(reply, /Workspace alias must use lowercase letters/)
 })
 
 test('codex command uses the active workspace', async () => {

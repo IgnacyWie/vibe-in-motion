@@ -1,7 +1,8 @@
 import fs from 'node:fs'
+import path from 'node:path'
 
 import { runCodexTask } from './integrations/codex'
-import { shipGitChanges } from './integrations/git'
+import { cloneGitHubRepo, shipGitChanges } from './integrations/git'
 import { watchGitHubDeployment } from './integrations/github'
 import { runShellCommand } from './integrations/shell'
 import { resolveWorkspacePath, type WorkspaceStore } from './storage/workspace-store'
@@ -14,6 +15,7 @@ type WorkspaceRecord = {
 type CommandRouterDependencies = {
   shellRunner?: typeof runShellCommand
   codexRunner?: typeof runCodexTask
+  gitCloneRunner?: typeof cloneGitHubRepo
   gitShipRunner?: typeof shipGitChanges
   deploymentWatcher?: typeof watchGitHubDeployment
   notifyChat?: (chatId: string | number, message: string) => Promise<void>
@@ -27,6 +29,7 @@ type CommandContext = {
 
 export function createCommandRouter({
   codexRunner = runCodexTask,
+  gitCloneRunner = cloneGitHubRepo,
   gitShipRunner = shipGitChanges,
   deploymentWatcher = watchGitHubDeployment,
   notifyChat,
@@ -53,7 +56,7 @@ export function createCommandRouter({
           case '/status':
             return buildStatusMessage(chatId, workspaceStore.getActiveWorkspace(chatId))
           case '/repo':
-            return handleRepoCommand({ args, chatId, workspaceStore })
+            return await handleRepoCommand({ args, chatId, gitCloneRunner, workspaceStore })
           case '/codex':
           case '/c':
             return await handleCodexCommand({
@@ -238,13 +241,15 @@ async function handleRunCommand({
   ].join('\n')
 }
 
-function handleRepoCommand({
+async function handleRepoCommand({
   args,
   chatId,
+  gitCloneRunner,
   workspaceStore
 }: {
   args: string[]
   chatId: string | number
+  gitCloneRunner: typeof cloneGitHubRepo
   workspaceStore: WorkspaceStore
 }) {
   const subcommand = args[0]
@@ -273,6 +278,48 @@ function handleRepoCommand({
       }
 
       return `Current workspace: ${workspace.alias}\nPath: ${workspace.path}`
+    }
+    case 'pull': {
+      const repoSlug = args[1]
+
+      if (!repoSlug) {
+        return 'Usage: /repo pull <owner>/<repo> [alias]'
+      }
+
+      const repoName = getRepoNameFromSlug(repoSlug)
+      const alias = args[2] || repoName
+      const normalizedAlias = normalizeWorkspaceAlias(alias)
+      const destinationPath = resolveWorkspacePath(repoName)
+
+      if (fs.existsSync(destinationPath)) {
+        return `Path already exists under Developer: ${repoName}`
+      }
+
+      const cloneResult = await gitCloneRunner({
+        destinationPath,
+        repoSlug
+      })
+
+      if (!cloneResult.ok) {
+        return [
+          `Clone failed for ${cloneResult.remoteUrl}`,
+          `Exit code: ${cloneResult.exitCode}`,
+          '',
+          cloneResult.message
+        ].join('\n')
+      }
+
+      const workspace = workspaceStore.upsertWorkspace(normalizedAlias, repoName)
+      workspaceStore.setActiveWorkspace(chatId, workspace.alias)
+
+      return [
+        'Repository pulled and workspace saved.',
+        `Alias: ${workspace.alias}`,
+        `Path: ${workspace.path}`,
+        `Remote: ${cloneResult.remoteUrl}`,
+        '',
+        cloneResult.message
+      ].join('\n')
     }
     case 'use': {
       const alias = args[1]
@@ -340,6 +387,7 @@ function handleRepoCommand({
         'Repo commands:',
         '/repo list',
         '/repo current',
+        '/repo pull <owner>/<repo> [alias]',
         '/repo use <alias>',
         '/repo add <alias> <path-under-Developer>',
         '/repo set <alias> <path-under-Developer>',
@@ -359,6 +407,7 @@ function buildHelpMessage(activeWorkspace: WorkspaceRecord | null) {
     '/status',
     '/repo list',
     '/repo current',
+    '/repo pull <owner>/<repo> [alias]',
     '/repo use <alias>',
     '/repo add <alias> <path-under-Developer>',
     '/repo set <alias> <path-under-Developer>',
@@ -441,4 +490,25 @@ function buildWhoAmIMessage(chatId: string | number, activeWorkspace: WorkspaceR
 
 function splitCommand(text: string) {
   return text.match(/"[^"]*"|'[^']*'|\S+/g)?.map(token => token.replace(/^['"]|['"]$/g, '')) || []
+}
+
+function getRepoNameFromSlug(repoSlug: string) {
+  const normalizedSlug = String(repoSlug || '').trim().replace(/\.git$/, '')
+  const repoName = normalizedSlug.split('/')[1] || ''
+
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(normalizedSlug) || !repoName) {
+    throw new Error('Repository must use GitHub owner/repo format, for example IgnacyWie/vibe-in-motion.')
+  }
+
+  return path.basename(repoName)
+}
+
+function normalizeWorkspaceAlias(alias: string) {
+  const normalizedAlias = String(alias || '').trim().toLowerCase()
+
+  if (!/^[a-z0-9][a-z0-9_-]*$/.test(normalizedAlias)) {
+    throw new Error('Workspace alias must use lowercase letters, numbers, hyphens, or underscores.')
+  }
+
+  return normalizedAlias
 }

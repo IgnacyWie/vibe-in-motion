@@ -5,12 +5,40 @@ export type GitShipInput = {
   workspacePath: string
 }
 
+export type GitCloneInput = {
+  destinationPath: string
+  repoSlug: string
+}
+
+export type GitCloneResult = {
+  ok: boolean
+  exitCode: number
+  message: string
+  remoteUrl: string
+}
+
 export type GitShipResult = {
   ok: boolean
   exitCode: number
   message: string
   branch?: string
   commitSha?: string
+}
+
+export async function cloneGitHubRepo({
+  destinationPath,
+  repoSlug
+}: GitCloneInput): Promise<GitCloneResult> {
+  const timeoutMs = Number(process.env.GIT_TIMEOUT_MS || 5 * 60 * 1000)
+  const remoteUrl = buildGitHubSshUrl(repoSlug)
+  const result = await runGit(['clone', remoteUrl, destinationPath], process.cwd(), timeoutMs)
+
+  return {
+    ok: result.exitCode === 0,
+    exitCode: result.exitCode,
+    remoteUrl,
+    message: truncateText(result.output || 'git clone finished.')
+  }
 }
 
 export async function shipGitChanges({
@@ -164,4 +192,14 @@ async function runGit(args: string[], cwd: string, timeoutMs: number) {
     cwd,
     timeoutMs
   })
+}
+
+function buildGitHubSshUrl(repoSlug: string) {
+  const normalizedSlug = String(repoSlug || '').trim().replace(/\.git$/, '')
+
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(normalizedSlug)) {
+    throw new Error('Repository must use GitHub owner/repo format, for example IgnacyWie/vibe-in-motion.')
+  }
+
+  return `git@github.com:${normalizedSlug}.git`
 }
