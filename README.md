@@ -121,10 +121,10 @@ Examples:
 
 ### Shell Commands
 
-- `/run <allowlisted command>` runs a command inside the active workspace
-- `/r <allowlisted command>` is a short alias for `/run`
+- `/run <command>` runs a command inside the active workspace
+- `/r <command>` is a short alias for `/run`
 
-This command is intentionally restricted to prefixes allowed by `RUN_COMMAND_ALLOWLIST`.
+By default, `/run` accepts plain commands without shell metacharacters like pipes or redirects. If you want to restore prefix-based restrictions, set `RUN_COMMAND_ALLOWLIST_ENABLED=true` and configure `RUN_COMMAND_ALLOWLIST`.
 
 Examples:
 
@@ -141,7 +141,8 @@ Examples:
 - `ALLOWED_TELEGRAM_CHAT_IDS` comma-separated Telegram chat allowlist
 - `DEVELOPER_ROOT` root directory that all workspace paths must stay within
 - `BOT_DB_PATH` SQLite database path for workspace and chat state
-- `RUN_COMMAND_ALLOWLIST` comma-separated allowlist of `/run` command prefixes
+- `RUN_COMMAND_ALLOWLIST_ENABLED` set to `true`, `1`, `yes`, or `on` to enforce `/run` prefix restrictions
+- `RUN_COMMAND_ALLOWLIST` comma-separated allowlist of `/run` command prefixes when allowlist mode is enabled
 - `CODEX_TIMEOUT_MS` timeout for `codex exec`
 - `SHELL_TIMEOUT_MS` timeout for `/run` commands
 - `GIT_TIMEOUT_MS` timeout for commit and push steps

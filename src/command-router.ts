@@ -46,7 +46,7 @@ export const TELEGRAM_BOT_COMMANDS: TelegramBotCommand[] = [
   { command: 'repo_remove', description: 'Remove a saved workspace alias' },
   { command: 'codex', description: 'Run Codex in the active workspace' },
   { command: 'codex_ship', description: 'Run Codex, commit, push, and watch deploys' },
-  { command: 'run', description: 'Run an allowlisted command in the workspace' }
+  { command: 'run', description: 'Run a command in the workspace' }
 ]
 
 export function createCommandRouter({
@@ -462,7 +462,7 @@ function buildHelpMessage(activeWorkspace: WorkspaceRecord | null) {
     '/repo remove <alias>',
     '/codex <prompt> or /c <prompt>',
     '/codex-ship <prompt> or /cs <prompt>',
-    '/run <allowlisted command> or /r <allowlisted command>'
+    '/run <command> or /r <command>'
   ].join('\n')
 }
 

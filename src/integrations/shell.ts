@@ -22,7 +22,9 @@ export async function runShellCommand({ command, cwd }: ShellRunInput) {
     throw new Error('Missing command.')
   }
 
-  assertCommandAllowed(argv)
+  if (isRunCommandAllowlistEnabled()) {
+    assertCommandAllowed(argv)
+  }
 
   const timeoutMs = Number(process.env.SHELL_TIMEOUT_MS || 5 * 60 * 1000)
 
@@ -40,23 +42,14 @@ export async function runShellCommand({ command, cwd }: ShellRunInput) {
   }
 }
 
+export function isRunCommandAllowlistEnabled() {
+  const rawValue = String(process.env.RUN_COMMAND_ALLOWLIST_ENABLED || '').trim().toLowerCase()
+
+  return rawValue === '1' || rawValue === 'true' || rawValue === 'yes' || rawValue === 'on'
+}
+
 export function getAllowedCommandPrefixes() {
-  const rawValue =
-    process.env.RUN_COMMAND_ALLOWLIST ||
-    [
-      'git status',
-      'git pull',
-      'git log',
-      'pnpm test',
-      'pnpm build',
-      'pnpm install',
-      'pnpm run dev',
-      'kubectl get pods',
-      'kubectl get deployments',
-      'docker ps',
-      'ls',
-      'pwd'
-    ].join(',')
+  const rawValue = process.env.RUN_COMMAND_ALLOWLIST || ''
 
   return rawValue
     .split(',')
