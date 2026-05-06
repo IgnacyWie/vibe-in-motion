@@ -1,8 +1,8 @@
-const test = require('node:test')
-const assert = require('node:assert/strict')
+import assert from 'node:assert/strict'
+import test from 'node:test'
 
-const { handleUpdate } = require('../src/telegram-bot')
-const { getIncomingMessage } = require('../src/integrations/telegram')
+import { getIncomingMessage } from '../src/integrations/telegram'
+import { handleUpdate } from '../src/telegram-bot'
 
 test('getIncomingMessage extracts a text message update', () => {
   const message = getIncomingMessage({
@@ -26,9 +26,9 @@ test('getIncomingMessage extracts a text message update', () => {
 test('handleUpdate replies with the closed-loop message for allowed chats', async () => {
   process.env.ALLOWED_TELEGRAM_CHAT_IDS = '12345'
 
-  const sentMessages = []
+  const sentMessages: Array<{ chatId: number; text: string }> = []
   const telegramClient = {
-    sendMessage: async payload => {
+    sendMessage: async (payload: { chatId: number; text: string }) => {
       sentMessages.push(payload)
     }
   }
@@ -55,9 +55,9 @@ test('handleUpdate replies with the closed-loop message for allowed chats', asyn
 test('handleUpdate rejects chats outside the allowlist', async () => {
   process.env.ALLOWED_TELEGRAM_CHAT_IDS = '12345'
 
-  const sentMessages = []
+  const sentMessages: Array<{ chatId: number; text: string }> = []
   const telegramClient = {
-    sendMessage: async payload => {
+    sendMessage: async (payload: { chatId: number; text: string }) => {
       sentMessages.push(payload)
     }
   }

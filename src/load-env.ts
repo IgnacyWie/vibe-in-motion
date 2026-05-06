@@ -1,7 +1,7 @@
-const fs = require('node:fs')
-const path = require('node:path')
+import fs from 'node:fs'
+import path from 'node:path'
 
-function loadEnv(filePath = path.join(process.cwd(), '.env')) {
+export function loadEnv(filePath = path.join(process.cwd(), '.env')) {
   if (!fs.existsSync(filePath)) {
     return
   }
@@ -33,7 +33,7 @@ function loadEnv(filePath = path.join(process.cwd(), '.env')) {
   }
 }
 
-function stripWrappingQuotes(value) {
+function stripWrappingQuotes(value: string) {
   if (
     (value.startsWith('"') && value.endsWith('"')) ||
     (value.startsWith("'") && value.endsWith("'"))
@@ -42,8 +42,4 @@ function stripWrappingQuotes(value) {
   }
 
   return value
-}
-
-module.exports = {
-  loadEnv
 }

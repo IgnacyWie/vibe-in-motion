@@ -1,15 +1,20 @@
 {
   "name": "vibe-in-motion",
   "version": "1.0.0",
-  "description": "Closed-loop WhatsApp automation scaffold",
-  "main": "src/server.js",
+  "description": "Closed-loop Telegram automation scaffold",
+  "main": "dist/server.js",
   "scripts": {
-    "dev": "node --watch src/server.js",
-    "start": "node src/server.js",
-    "build": "echo \"No build step configured\"",
-    "test": "node --test"
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js",
+    "build": "tsc --project tsconfig.json",
+    "test": "node --import tsx --test tests/*.test.ts"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
+  }
 }

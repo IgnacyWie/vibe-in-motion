@@ -1,8 +1,8 @@
-const http = require('node:http')
+import http from 'node:http'
 
-const { createApp } = require('./create-app')
-const { loadEnv } = require('./load-env')
-const { startTelegramBot } = require('./telegram-bot')
+import { createApp } from './create-app'
+import { loadEnv } from './load-env'
+import { startTelegramBot } from './telegram-bot'
 
 loadEnv()
 

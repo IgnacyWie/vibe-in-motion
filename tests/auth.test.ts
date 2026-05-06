@@ -1,7 +1,7 @@
-const test = require('node:test')
-const assert = require('node:assert/strict')
+import assert from 'node:assert/strict'
+import test from 'node:test'
 
-const { isAllowedTelegramChat } = require('../src/integrations/auth')
+import { isAllowedTelegramChat } from '../src/integrations/auth'
 
 test('telegram allowlist allows all chats when unset', () => {
   delete process.env.ALLOWED_TELEGRAM_CHAT_IDS

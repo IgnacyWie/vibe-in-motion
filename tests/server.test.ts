@@ -1,8 +1,9 @@
-const test = require('node:test')
-const assert = require('node:assert/strict')
-const { Readable, Writable } = require('node:stream')
+import assert from 'node:assert/strict'
+import type { IncomingMessage, ServerResponse } from 'node:http'
+import { Readable, Writable } from 'node:stream'
+import test from 'node:test'
 
-const { createApp } = require('../src/create-app')
+import { createApp } from '../src/create-app'
 
 test('GET /health returns ok', async () => {
   const response = await invokeApp({
@@ -24,25 +25,39 @@ test('unknown route returns 404', async () => {
   assert.deepEqual(JSON.parse(response.body), { error: 'Not found' })
 })
 
-async function invokeApp({ method, url, body = '' }) {
+type InvokeAppOptions = {
+  method: string
+  url: string
+  body?: string
+}
+
+type MockResponse = Writable & {
+  statusCode: number
+  headers: Record<string, string>
+  body?: string
+  writeHead: (statusCode: number, headers: Record<string, string>) => MockResponse
+  end: (chunk?: string | Buffer) => MockResponse
+}
+
+async function invokeApp({ method, url, body = '' }: InvokeAppOptions) {
   const app = createApp()
   const req = new Readable({
     read() {
       this.push(body)
       this.push(null)
     }
-  })
+  }) as IncomingMessage
 
   req.method = method
   req.url = url
 
-  const chunks = []
+  const chunks: Buffer[] = []
   const res = new Writable({
-    write(chunk, encoding, callback) {
+    write(chunk, _encoding, callback) {
       chunks.push(Buffer.from(chunk))
       callback()
     }
-  })
+  }) as MockResponse
 
   res.statusCode = 200
   res.headers = {}
@@ -57,15 +72,11 @@ async function invokeApp({ method, url, body = '' }) {
     }
 
     res.body = Buffer.concat(chunks).toString('utf8')
-    res.finished = true
     res.emit('finish')
+    return res
   }
 
-  await app(req, res)
-
-  if (!res.finished) {
-    await new Promise(resolve => res.once('finish', resolve))
-  }
+  await app(req, res as unknown as ServerResponse)
 
   return {
     statusCode: res.statusCode,

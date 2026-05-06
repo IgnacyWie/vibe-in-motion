@@ -1,11 +1,30 @@
-const { isAllowedTelegramChat } = require('./integrations/auth')
-const { executePrompt } = require('./integrations/executor')
-const { createTelegramClient, getIncomingMessage } = require('./integrations/telegram')
+import { isAllowedTelegramChat } from './integrations/auth'
+import { executePrompt } from './integrations/executor'
+import {
+  createTelegramClient,
+  getIncomingMessage,
+  type ParsedIncomingMessage,
+  type TelegramUpdate
+} from './integrations/telegram'
 
-async function startTelegramBot({
+type Logger = Pick<Console, 'log' | 'error'>
+type TelegramClient = ReturnType<typeof createTelegramClient>
+
+type StartTelegramBotOptions = {
+  telegramClient?: TelegramClient
+  logger?: Logger
+}
+
+type HandleUpdateOptions = {
+  update: TelegramUpdate
+  telegramClient: Pick<TelegramClient, 'sendMessage'>
+  logger?: Logger
+}
+
+export async function startTelegramBot({
   telegramClient = createTelegramClient(),
   logger = console
-} = {}) {
+}: StartTelegramBotOptions = {}) {
   const bot = await telegramClient.getMe()
   logger.log(`Telegram bot connected as @${bot.username || bot.id}`)
 
@@ -28,7 +47,11 @@ async function startTelegramBot({
   }
 }
 
-async function handleUpdate({ update, telegramClient, logger = console }) {
+export async function handleUpdate({
+  update,
+  telegramClient,
+  logger = console
+}: HandleUpdateOptions) {
   const message = getIncomingMessage(update)
 
   if (!message) {
@@ -63,7 +86,7 @@ async function handleUpdate({ update, telegramClient, logger = console }) {
   logger.log(`Processed Telegram update ${message.updateId} for chat ${message.chatId}`)
 }
 
-function formatSender(message) {
+export function formatSender(message: ParsedIncomingMessage) {
   if (message.fromUsername) {
     return `@${message.fromUsername}`
   }
@@ -71,14 +94,8 @@ function formatSender(message) {
   return String(message.fromId || 'unknown')
 }
 
-function sleep(durationMs) {
+function sleep(durationMs: number) {
   return new Promise(resolve => {
     setTimeout(resolve, durationMs)
   })
-}
-
-module.exports = {
-  formatSender,
-  handleUpdate,
-  startTelegramBot
 }

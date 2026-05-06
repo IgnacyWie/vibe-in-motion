@@ -1,4 +1,22 @@
-async function executePrompt({ channel, from, prompt, chatId }) {
+type ExecutePromptInput = {
+  channel: 'telegram'
+  from: string
+  prompt: string
+  chatId: string | number
+}
+
+type ExecutePromptResult = {
+  ok: boolean
+  reply: string
+  executionId?: string
+}
+
+export async function executePrompt({
+  channel,
+  from,
+  prompt,
+  chatId
+}: ExecutePromptInput): Promise<ExecutePromptResult> {
   const trimmedPrompt = String(prompt || '').trim()
 
   if (!trimmedPrompt) {
@@ -14,7 +32,7 @@ async function executePrompt({ channel, from, prompt, chatId }) {
     ok: true,
     executionId,
     reply: [
-      `Closed loop acknowledged.`,
+      'Closed loop acknowledged.',
       `Channel: ${channel}`,
       `Sender: ${from}`,
       `Chat: ${chatId}`,
@@ -27,8 +45,4 @@ async function executePrompt({ channel, from, prompt, chatId }) {
 
 function createExecutionId() {
   return `exec_${Date.now().toString(36)}`
-}
-
-module.exports = {
-  executePrompt
 }

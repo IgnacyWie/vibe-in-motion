@@ -1,5 +1,7 @@
-function createApp() {
-  return async function app(req, res) {
+import type { IncomingMessage, ServerResponse } from 'node:http'
+
+export function createApp() {
+  return async function app(req: IncomingMessage, res: ServerResponse) {
     if (req.method === 'GET' && req.url === '/health') {
       return sendJson(res, 200, { ok: true })
     }
@@ -8,11 +10,7 @@ function createApp() {
   }
 }
 
-function sendJson(res, statusCode, payload) {
+function sendJson(res: ServerResponse, statusCode: number, payload: unknown) {
   res.writeHead(statusCode, { 'content-type': 'application/json; charset=utf-8' })
   res.end(JSON.stringify(payload))
-}
-
-module.exports = {
-  createApp
 }
