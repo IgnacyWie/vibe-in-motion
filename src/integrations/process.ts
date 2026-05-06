@@ -1,3 +1,5 @@
+import os from 'node:os'
+import path from 'node:path'
 import { spawn } from 'node:child_process'
 
 export type ProcessRunInput = {
@@ -14,7 +16,7 @@ export async function runProcess({ command, args, cwd, timeoutMs }: ProcessRunIn
   }>((resolve, reject) => {
     const child = spawn(command, args, {
       cwd,
-      env: process.env,
+      env: buildProcessEnv(),
       stdio: ['ignore', 'pipe', 'pipe']
     })
 
@@ -44,6 +46,40 @@ export async function runProcess({ command, args, cwd, timeoutMs }: ProcessRunIn
       })
     })
   })
+}
+
+export function buildProcessEnv(baseEnv: NodeJS.ProcessEnv = process.env) {
+  const env = { ...baseEnv }
+  const pathEntries = new Set<string>()
+  const homeDir = env.HOME || os.homedir()
+  const pnpmHome = env.PNPM_HOME || path.join(homeDir, 'Library', 'pnpm')
+  const fallbackEntries = [
+    pnpmHome,
+    '/opt/homebrew/bin',
+    '/usr/local/bin',
+    '/usr/bin',
+    '/bin',
+    '/usr/sbin',
+    '/sbin'
+  ]
+
+  for (const entry of String(env.PATH || '')
+    .split(path.delimiter)
+    .filter(Boolean)) {
+    pathEntries.add(entry)
+  }
+
+  for (const entry of fallbackEntries) {
+    pathEntries.add(entry)
+  }
+
+  env.PATH = Array.from(pathEntries).join(path.delimiter)
+
+  if (!env.PNPM_HOME) {
+    env.PNPM_HOME = pnpmHome
+  }
+
+  return env
 }
 
 export function truncateText(value: string, maxLength = 3500) {

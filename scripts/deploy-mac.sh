@@ -98,7 +98,11 @@ print_logs() {
 
 render_plist() {
   local node_bin
+  local process_path
+  local pnpm_home
   node_bin="$(command -v node)"
+  process_path="$(build_process_path)"
+  pnpm_home="${PNPM_HOME:-$HOME/Library/pnpm}"
 
   if [ ! -f "$TEMPLATE_PATH" ]; then
     echo "Missing plist template: $TEMPLATE_PATH" >&2
@@ -107,9 +111,17 @@ render_plist() {
 
   sed \
     -e "s|__NODE_BIN__|$(escape_sed_replacement "$node_bin")|g" \
+    -e "s|__PROCESS_PATH__|$(escape_sed_replacement "$process_path")|g" \
+    -e "s|__PNPM_HOME__|$(escape_sed_replacement "$pnpm_home")|g" \
     -e "s|__REPO_ROOT__|$(escape_sed_replacement "$REPO_ROOT")|g" \
     -e "s|__HOME_DIR__|$(escape_sed_replacement "$HOME")|g" \
     "$TEMPLATE_PATH"
+}
+
+build_process_path() {
+  local pnpm_home
+  pnpm_home="${PNPM_HOME:-$HOME/Library/pnpm}"
+  printf '%s' "${PATH}:$pnpm_home:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 }
 
 escape_sed_replacement() {

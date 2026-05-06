@@ -14,6 +14,14 @@
     <key>WorkingDirectory</key>
     <string>__REPO_ROOT__</string>
 
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>PATH</key>
+      <string>__PROCESS_PATH__</string>
+      <key>PNPM_HOME</key>
+      <string>__PNPM_HOME__</string>
+    </dict>
+
     <key>RunAtLoad</key>
     <true/>
 
