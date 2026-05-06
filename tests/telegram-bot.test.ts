@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { getIncomingMessage } from '../src/integrations/telegram'
+import { openDatabase } from '../src/storage/database'
+import { createWorkspaceStore } from '../src/storage/workspace-store'
 import { handleUpdate } from '../src/telegram-bot'
 
 test('getIncomingMessage extracts a text message update', () => {
@@ -23,7 +25,7 @@ test('getIncomingMessage extracts a text message update', () => {
   })
 })
 
-test('handleUpdate replies with the closed-loop message for allowed chats', async () => {
+test('handleUpdate routes allowed chats through the command handler', async () => {
   process.env.ALLOWED_TELEGRAM_CHAT_IDS = '12345'
 
   const sentMessages: Array<{ chatId: number; text: string }> = []
@@ -32,24 +34,26 @@ test('handleUpdate replies with the closed-loop message for allowed chats', asyn
       sentMessages.push(payload)
     }
   }
+  const workspaceStore = createWorkspaceStore(openDatabase(':memory:'))
 
   await handleUpdate({
     update: {
       update_id: 101,
       message: {
-        text: 'Make the hero bigger',
+        text: '/help',
         chat: { id: 12345 },
         from: { id: 999, username: 'ignacy' }
       }
     },
     telegramClient,
-    logger: { log() {}, error() {} }
+    logger: { log() {}, error() {} },
+    workspaceStore
   })
 
   assert.equal(sentMessages.length, 1)
   assert.equal(sentMessages[0].chatId, 12345)
-  assert.match(sentMessages[0].text, /Closed loop acknowledged\./)
-  assert.match(sentMessages[0].text, /Make the hero bigger/)
+  assert.match(sentMessages[0].text, /Telegram coding bot/)
+  assert.match(sentMessages[0].text, /\/codex <prompt>/)
 })
 
 test('handleUpdate rejects chats outside the allowlist', async () => {
@@ -61,6 +65,7 @@ test('handleUpdate rejects chats outside the allowlist', async () => {
       sentMessages.push(payload)
     }
   }
+  const workspaceStore = createWorkspaceStore(openDatabase(':memory:'))
 
   await handleUpdate({
     update: {
@@ -72,7 +77,8 @@ test('handleUpdate rejects chats outside the allowlist', async () => {
       }
     },
     telegramClient,
-    logger: { log() {}, error() {} }
+    logger: { log() {}, error() {} },
+    workspaceStore
   })
 
   assert.equal(sentMessages.length, 1)

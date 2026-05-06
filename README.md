@@ -58,3 +58,77 @@ git clone [https://github.com/yourusername/omnichannel-vibecoding-agent.git](htt
 cd omnichannel-vibecoding-agent
 pnpm install
 ```
+
+## 🤖 Telegram Bot Commands
+
+The current implementation is Telegram-first and stores workspace state in SQLite. All workspace paths are resolved under `DEVELOPER_ROOT`, so repo commands should use paths relative to your `Developer` directory, not full absolute paths.
+
+Example:
+
+```text
+/repo add vibe vibe-in-motion
+/repo use vibe
+```
+
+### General
+
+- `/help` shows the available bot commands
+- `/start` shows the same help output
+- `/whoami` shows your Telegram chat ID and the currently selected workspace
+- `/status` shows your Telegram chat ID and active workspace alias
+
+### Workspace Management
+
+- `/repo list` lists all saved workspace aliases and paths
+- `/repo current` shows the currently active workspace for this chat
+- `/repo use <alias>` switches this chat to a saved workspace
+- `/repo add <alias> <path-under-Developer>` adds a new workspace alias
+- `/repo set <alias> <path-under-Developer>` updates an existing workspace alias
+- `/repo remove <alias>` removes a saved workspace alias
+
+Examples:
+
+```text
+/repo add vibe vibe-in-motion
+/repo add api my-api
+/repo use vibe
+/repo current
+/repo list
+```
+
+### Codex Commands
+
+- `/codex <prompt>` runs `codex exec` in the active workspace without committing or pushing
+- `/codex-ship <prompt>` runs `codex exec`, stages the resulting git changes, creates a commit message, commits, and pushes
+
+Examples:
+
+```text
+/codex Add a /health route for the API server
+/codex-ship Add a README section describing setup commands
+```
+
+### Shell Commands
+
+- `/run <allowlisted command>` runs a command inside the active workspace
+
+This command is intentionally restricted to prefixes allowed by `RUN_COMMAND_ALLOWLIST`.
+
+Examples:
+
+```text
+/run git status
+/run pnpm test
+/run pnpm build
+```
+
+### Relevant Environment Variables
+
+- `TELEGRAM_BOT_TOKEN` Telegram bot token
+- `ALLOWED_TELEGRAM_CHAT_IDS` comma-separated Telegram chat allowlist
+- `DEVELOPER_ROOT` root directory that all workspace paths must stay within
+- `BOT_DB_PATH` SQLite database path for workspace and chat state
+- `RUN_COMMAND_ALLOWLIST` comma-separated allowlist of `/run` command prefixes
+- `CODEX_TIMEOUT_MS` timeout for `codex exec`
+- `SHELL_TIMEOUT_MS` timeout for `/run` commands
+- `GIT_TIMEOUT_MS` timeout for commit and push steps

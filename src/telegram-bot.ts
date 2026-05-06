@@ -1,11 +1,13 @@
 import { isAllowedTelegramChat } from './integrations/auth'
-import { executePrompt } from './integrations/executor'
+import { createCommandRouter } from './command-router'
 import {
   createTelegramClient,
   getIncomingMessage,
   type ParsedIncomingMessage,
   type TelegramUpdate
 } from './integrations/telegram'
+import { openDatabase } from './storage/database'
+import { createWorkspaceStore, type WorkspaceStore } from './storage/workspace-store'
 
 type Logger = Pick<Console, 'log' | 'error'>
 type TelegramClient = ReturnType<typeof createTelegramClient>
@@ -13,17 +15,20 @@ type TelegramClient = ReturnType<typeof createTelegramClient>
 type StartTelegramBotOptions = {
   telegramClient?: TelegramClient
   logger?: Logger
+  workspaceStore?: WorkspaceStore
 }
 
 type HandleUpdateOptions = {
   update: TelegramUpdate
   telegramClient: Pick<TelegramClient, 'sendMessage'>
   logger?: Logger
+  workspaceStore: WorkspaceStore
 }
 
 export async function startTelegramBot({
   telegramClient = createTelegramClient(),
-  logger = console
+  logger = console,
+  workspaceStore = createWorkspaceStore(openDatabase())
 }: StartTelegramBotOptions = {}) {
   const bot = await telegramClient.getMe()
   logger.log(`Telegram bot connected as @${bot.username || bot.id}`)
@@ -37,7 +42,7 @@ export async function startTelegramBot({
 
       for (const update of updates) {
         offset = update.update_id + 1
-        await handleUpdate({ update, telegramClient, logger })
+        await handleUpdate({ update, telegramClient, logger, workspaceStore })
       }
     } catch (error) {
       logger.error('Telegram polling failed')
@@ -50,7 +55,8 @@ export async function startTelegramBot({
 export async function handleUpdate({
   update,
   telegramClient,
-  logger = console
+  logger = console,
+  workspaceStore
 }: HandleUpdateOptions) {
   const message = getIncomingMessage(update)
 
@@ -70,17 +76,15 @@ export async function handleUpdate({
     return
   }
 
-  const sender = formatSender(message)
-  const result = await executePrompt({
-    channel: 'telegram',
-    from: sender,
+  const router = createCommandRouter({ workspaceStore })
+  const reply = await router.handleCommand({
     chatId: message.chatId,
-    prompt: message.text
+    text: message.text
   })
 
   await telegramClient.sendMessage({
     chatId: message.chatId,
-    text: result.reply
+    text: reply
   })
 
   logger.log(`Processed Telegram update ${message.updateId} for chat ${message.chatId}`)
