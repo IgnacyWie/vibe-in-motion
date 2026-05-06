@@ -141,3 +141,27 @@ Examples:
 - `CODEX_TIMEOUT_MS` timeout for `codex exec`
 - `SHELL_TIMEOUT_MS` timeout for `/run` commands
 - `GIT_TIMEOUT_MS` timeout for commit and push steps
+
+## macOS launchd deploy
+
+For a native macOS background service without Docker, use the included launchd installer:
+
+```bash
+pnpm run deploy:mac
+```
+
+This script:
+
+- installs dependencies with `pnpm install --frozen-lockfile`
+- builds the app
+- renders `deploy/com.ignacy.vibe-in-motion.plist` into `~/Library/LaunchAgents/`
+- reloads the `com.ignacy.vibe-in-motion` launchd service
+
+Useful follow-up commands:
+
+```bash
+bash scripts/deploy-mac.sh status
+bash scripts/deploy-mac.sh restart
+bash scripts/deploy-mac.sh stop
+bash scripts/deploy-mac.sh logs
+```
