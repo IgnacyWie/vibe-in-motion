@@ -87,5 +87,9 @@ export function truncateText(value: string, maxLength = 3500) {
     return value
   }
 
-  return `${value.slice(0, maxLength - 18)}\n[output truncated]`
+  const marker = '[output truncated]'
+  const markerWithSpacing = `${marker}\n`
+  const tailLength = Math.max(0, maxLength - markerWithSpacing.length)
+
+  return `${markerWithSpacing}${value.slice(-tailLength)}`
 }

@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 
-import { buildProcessEnv } from '../src/integrations/process'
+import { buildProcessEnv, truncateText } from '../src/integrations/process'
 
 test('buildProcessEnv appends common executable paths', () => {
   const env = buildProcessEnv({
@@ -41,4 +41,19 @@ test('buildProcessEnv works without PATH set', () => {
 
   assert.ok(pathEntries.includes(path.join(homeDir, 'Library', 'pnpm')))
   assert.ok(pathEntries.includes('/usr/bin'))
+})
+
+test('truncateText keeps the bottom of long output', () => {
+  const value = [
+    'build step 1',
+    'build step 2',
+    'build step 3',
+    'Error: deploy failed at final step'
+  ].join('\n')
+
+  const truncated = truncateText(value, 55)
+
+  assert.match(truncated, /^\[output truncated\]\n/)
+  assert.match(truncated, /Error: deploy failed at final step$/)
+  assert.doesNotMatch(truncated, /build step 1/)
 })
