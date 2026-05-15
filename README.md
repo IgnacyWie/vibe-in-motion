@@ -108,6 +108,8 @@ Examples:
 - `/c <prompt>` is a short alias for `/codex`
 - `/codex-ship <prompt>` runs `codex exec`, stages the resulting git changes, creates a commit message, commits, pushes, and watches GitHub deploy workflows
 - `/cs <prompt>` is a short alias for `/codex-ship`
+- `/rollback` moves the active branch back by one commit, pushes a backup branch for the removed commit, then force-with-lease pushes the rollback
+- `/rb` is a short alias for `/rollback`
 - Suggested alias: `/codex_ship <prompt>`
 
 Examples:
@@ -117,6 +119,8 @@ Examples:
 /c Add a setup command
 /codex-ship Add a README section describing setup commands
 /cs Ship a fix for the deploy watcher
+/rollback
+/rb
 ```
 
 ### Shell Commands

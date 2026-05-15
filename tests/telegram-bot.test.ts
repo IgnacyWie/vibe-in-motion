@@ -88,6 +88,37 @@ test('handleUpdate acknowledges suggested underscored long-running commands', as
   assert.match(sentMessages[1].text, /No active workspace/)
 })
 
+test('handleUpdate acknowledges rollback commands', async () => {
+  process.env.ALLOWED_TELEGRAM_CHAT_IDS = '12345'
+
+  const sentMessages: Array<{ chatId: number; text: string }> = []
+  const telegramClient = {
+    sendMessage: async (payload: { chatId: number; text: string }) => {
+      sentMessages.push(payload)
+    }
+  }
+  const workspaceStore = createWorkspaceStore(openDatabase(':memory:'))
+
+  await handleUpdate({
+    update: {
+      update_id: 104,
+      message: {
+        text: '/rollback',
+        chat: { id: 12345 },
+        from: { id: 999, username: 'ignacy' }
+      }
+    },
+    telegramClient,
+    logger: { log() {}, error() {} },
+    workspaceStore
+  })
+
+  assert.equal(sentMessages.length, 2)
+  assert.equal(sentMessages[0].chatId, 12345)
+  assert.equal(sentMessages[0].text, 'Processing...')
+  assert.match(sentMessages[1].text, /No active workspace/)
+})
+
 test('handleUpdate rejects chats outside the allowlist', async () => {
   process.env.ALLOWED_TELEGRAM_CHAT_IDS = '12345'
 

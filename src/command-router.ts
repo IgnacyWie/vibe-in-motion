@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { runCodexTask } from './integrations/codex'
-import { cloneGitHubRepo, shipGitChanges } from './integrations/git'
+import { cloneGitHubRepo, rollbackGitLastCommit, shipGitChanges } from './integrations/git'
 import { watchGitHubDeployment } from './integrations/github'
 import { runShellCommand } from './integrations/shell'
 import { resolveWorkspacePath, type WorkspaceStore } from './storage/workspace-store'
@@ -17,6 +17,7 @@ type CommandRouterDependencies = {
   codexRunner?: typeof runCodexTask
   gitCloneRunner?: typeof cloneGitHubRepo
   gitShipRunner?: typeof shipGitChanges
+  gitRollbackRunner?: typeof rollbackGitLastCommit
   deploymentWatcher?: typeof watchGitHubDeployment
   notifyChat?: (chatId: string | number, message: string) => Promise<void>
   workspaceStore: WorkspaceStore
@@ -46,6 +47,8 @@ export const TELEGRAM_BOT_COMMANDS: TelegramBotCommand[] = [
   { command: 'repo_remove', description: 'Remove a saved workspace alias' },
   { command: 'codex', description: 'Run Codex in the active workspace' },
   { command: 'codex_ship', description: 'Run Codex, commit, push, and watch deploys' },
+  { command: 'rollback', description: 'Rollback the active branch by one commit' },
+  { command: 'rb', description: 'Rollback the active branch by one commit' },
   { command: 'run', description: 'Run a command in the workspace' }
 ]
 
@@ -53,6 +56,7 @@ export function createCommandRouter({
   codexRunner = runCodexTask,
   gitCloneRunner = cloneGitHubRepo,
   gitShipRunner = shipGitChanges,
+  gitRollbackRunner = rollbackGitLastCommit,
   deploymentWatcher = watchGitHubDeployment,
   notifyChat,
   shellRunner = runShellCommand,
@@ -106,6 +110,13 @@ export function createCommandRouter({
               notifyChat,
               workspaceStore
             })
+          case '/rollback':
+          case '/rb':
+            return await handleRollbackCommand({
+              chatId,
+              gitRollbackRunner,
+              workspaceStore
+            })
           case '/run':
           case '/r':
             return await handleRunCommand({
@@ -122,6 +133,33 @@ export function createCommandRouter({
       }
     }
   }
+}
+
+async function handleRollbackCommand({
+  chatId,
+  gitRollbackRunner,
+  workspaceStore
+}: {
+  chatId: string | number
+  gitRollbackRunner: typeof rollbackGitLastCommit
+  workspaceStore: WorkspaceStore
+}) {
+  const workspace = workspaceStore.getActiveWorkspace(chatId)
+
+  if (!workspace) {
+    return 'No active workspace. Use /repo use <alias> first.'
+  }
+
+  const gitResult = await gitRollbackRunner({
+    workspacePath: workspace.path
+  })
+
+  return [
+    `Workspace: ${workspace.alias}`,
+    `Git exit code: ${gitResult.exitCode}`,
+    '',
+    gitResult.message
+  ].join('\n')
 }
 
 async function handleCodexCommand({
@@ -462,6 +500,7 @@ function buildHelpMessage(activeWorkspace: WorkspaceRecord | null) {
     '/repo remove <alias>',
     '/codex <prompt> or /c <prompt>',
     '/codex-ship <prompt> or /cs <prompt>',
+    '/rollback or /rb',
     '/run <command> or /r <command>'
   ].join('\n')
 }

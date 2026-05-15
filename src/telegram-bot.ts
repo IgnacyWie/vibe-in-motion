@@ -131,6 +131,8 @@ function requiresImmediateAcknowledgement(text: string) {
     command === '/codex-ship' ||
     command === '/codex_ship' ||
     command === '/cs' ||
+    command === '/rollback' ||
+    command === '/rb' ||
     command === '/run' ||
     command === '/r'
   )

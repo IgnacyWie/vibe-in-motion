@@ -25,6 +25,20 @@ export type GitShipResult = {
   commitSha?: string
 }
 
+export type GitRollbackInput = {
+  workspacePath: string
+}
+
+export type GitRollbackResult = {
+  ok: boolean
+  exitCode: number
+  message: string
+  branch?: string
+  backupBranch?: string
+  rolledBackFrom?: string
+  rolledBackTo?: string
+}
+
 export async function cloneGitHubRepo({
   destinationPath,
   repoSlug
@@ -103,6 +117,105 @@ export async function shipGitChanges({
   }
 }
 
+export async function rollbackGitLastCommit({
+  workspacePath
+}: GitRollbackInput): Promise<GitRollbackResult> {
+  const timeoutMs = Number(process.env.GIT_TIMEOUT_MS || 5 * 60 * 1000)
+
+  await assertGitRepo(workspacePath, timeoutMs)
+
+  const changedFiles = await getChangedFiles(workspacePath, timeoutMs)
+
+  if (changedFiles.length > 0) {
+    return {
+      ok: false,
+      exitCode: 1,
+      message: [
+        'Rollback refused because the worktree has uncommitted changes.',
+        'Commit, stash, or discard them before rolling back.',
+        `Files: ${changedFiles.join(', ')}`
+      ].join('\n')
+    }
+  }
+
+  const branch = await getCurrentBranch(workspacePath, timeoutMs)
+  const rolledBackFrom = await getCommitSha(workspacePath, timeoutMs)
+  const rolledBackTo = await getRevisionSha(workspacePath, 'HEAD~1', timeoutMs)
+  const backupBranch = buildRollbackBranchName(branch, rolledBackFrom)
+  const createBranchResult = await runGit(['branch', backupBranch, rolledBackFrom], workspacePath, timeoutMs)
+
+  if (createBranchResult.exitCode !== 0) {
+    return {
+      ok: false,
+      exitCode: createBranchResult.exitCode,
+      branch,
+      backupBranch,
+      rolledBackFrom,
+      rolledBackTo,
+      message: truncateText(createBranchResult.output || 'Could not create rollback backup branch.')
+    }
+  }
+
+  const pushBackupResult = await runGit(
+    ['push', 'origin', `${backupBranch}:${backupBranch}`],
+    workspacePath,
+    timeoutMs
+  )
+
+  if (pushBackupResult.exitCode !== 0) {
+    return {
+      ok: false,
+      exitCode: pushBackupResult.exitCode,
+      branch,
+      backupBranch,
+      rolledBackFrom,
+      rolledBackTo,
+      message: [
+        'Rollback stopped before resetting because the backup branch could not be pushed.',
+        '',
+        truncateText(pushBackupResult.output || 'git push backup branch failed.')
+      ].join('\n')
+    }
+  }
+
+  const resetResult = await runGit(['reset', '--hard', rolledBackTo], workspacePath, timeoutMs)
+
+  if (resetResult.exitCode !== 0) {
+    return {
+      ok: false,
+      exitCode: resetResult.exitCode,
+      branch,
+      backupBranch,
+      rolledBackFrom,
+      rolledBackTo,
+      message: truncateText(resetResult.output || 'git reset --hard failed.')
+    }
+  }
+
+  const pushRollbackResult = await runGit(
+    ['push', '--force-with-lease', 'origin', `${branch}:${branch}`],
+    workspacePath,
+    timeoutMs
+  )
+
+  return {
+    ok: pushRollbackResult.exitCode === 0,
+    exitCode: pushRollbackResult.exitCode,
+    branch,
+    backupBranch,
+    rolledBackFrom,
+    rolledBackTo,
+    message: [
+      `Branch: ${branch}`,
+      `Rolled back from: ${rolledBackFrom}`,
+      `Rolled back to: ${rolledBackTo}`,
+      `Backup branch: ${backupBranch}`,
+      '',
+      truncateText(pushRollbackResult.output || 'git push rollback finished.')
+    ].join('\n')
+  }
+}
+
 async function assertGitRepo(workspacePath: string, timeoutMs: number) {
   const result = await runGit(['rev-parse', '--is-inside-work-tree'], workspacePath, timeoutMs)
 
@@ -170,6 +283,22 @@ async function getCommitSha(workspacePath: string, timeoutMs: number) {
   return commitSha
 }
 
+async function getRevisionSha(workspacePath: string, revision: string, timeoutMs: number) {
+  const result = await runGit(['rev-parse', revision], workspacePath, timeoutMs)
+
+  if (result.exitCode !== 0) {
+    throw new Error(result.output || `Could not resolve ${revision}.`)
+  }
+
+  const commitSha = result.output.trim()
+
+  if (!commitSha) {
+    throw new Error(`Could not determine commit SHA for ${revision}.`)
+  }
+
+  return commitSha
+}
+
 function buildCommitMessage(prompt: string, changedFiles: string[]) {
   const normalizedPrompt = prompt.replace(/\s+/g, ' ').trim()
   const shortPrompt = normalizedPrompt.slice(0, 52).trim()
@@ -183,6 +312,13 @@ function inferScope(changedFiles: string[]) {
   const topLevelSegment = firstFile.split('/')[0] || 'repo'
 
   return topLevelSegment.replace(/[^a-zA-Z0-9_-]/g, '-').toLowerCase() || 'repo'
+}
+
+function buildRollbackBranchName(branch: string, commitSha: string) {
+  const timestamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+$/, 'Z')
+  const safeBranch = branch.replace(/[^A-Za-z0-9._/-]/g, '-').replace(/^\/+|\/+$/g, '')
+
+  return `rollback/${safeBranch || 'branch'}-${commitSha.slice(0, 12)}-${timestamp}`
 }
 
 async function runGit(args: string[], cwd: string, timeoutMs: number) {

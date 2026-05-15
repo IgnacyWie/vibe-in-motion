@@ -307,6 +307,66 @@ test('run command uses the active workspace cwd', async () => {
   assert.match(reply, /Command: git status/)
 })
 
+test('rollback command uses the active workspace', async () => {
+  process.env.DEVELOPER_ROOT = '/Users/ignacywielogorski/Developer'
+  const workspaceStore = createWorkspaceStore(openDatabase(':memory:'))
+  workspaceStore.upsertWorkspace('vibe', 'vibe-in-motion')
+  workspaceStore.setActiveWorkspace(12345, 'vibe')
+
+  const rollbackCalls: Array<{ workspacePath: string }> = []
+  const router = createCommandRouter({
+    workspaceStore,
+    gitRollbackRunner: async input => {
+      rollbackCalls.push(input)
+
+      return {
+        ok: true,
+        exitCode: 0,
+        branch: 'main',
+        backupBranch: 'rollback/main-abc123-20260515T120000Z',
+        rolledBackFrom: 'abc123',
+        rolledBackTo: 'def456',
+        message: 'Rolled back.'
+      }
+    }
+  })
+
+  const reply = await router.handleCommand({
+    chatId: 12345,
+    text: '/rollback'
+  })
+
+  assert.equal(rollbackCalls.length, 1)
+  assert.equal(rollbackCalls[0].workspacePath, '/Users/ignacywielogorski/Developer/vibe-in-motion')
+  assert.match(reply, /Workspace: vibe/)
+  assert.match(reply, /Git exit code: 0/)
+  assert.match(reply, /Rolled back\./)
+})
+
+test('short rollback alias uses the active workspace', async () => {
+  process.env.DEVELOPER_ROOT = '/Users/ignacywielogorski/Developer'
+  const workspaceStore = createWorkspaceStore(openDatabase(':memory:'))
+  workspaceStore.upsertWorkspace('vibe', 'vibe-in-motion')
+  workspaceStore.setActiveWorkspace(12345, 'vibe')
+
+  const router = createCommandRouter({
+    workspaceStore,
+    gitRollbackRunner: async () => ({
+      ok: true,
+      exitCode: 0,
+      message: 'Rolled back through alias.'
+    })
+  })
+
+  const reply = await router.handleCommand({
+    chatId: 12345,
+    text: '/rb'
+  })
+
+  assert.match(reply, /Workspace: vibe/)
+  assert.match(reply, /Rolled back through alias\./)
+})
+
 test('repo command aliases map to repo subcommands', async () => {
   process.env.DEVELOPER_ROOT = '/Users/ignacywielogorski/Developer'
   const workspaceStore = createWorkspaceStore(openDatabase(':memory:'))
