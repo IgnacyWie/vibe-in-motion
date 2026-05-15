@@ -242,6 +242,33 @@ test('short codex alias uses the active workspace', async () => {
   assert.match(reply, /Prompt: add an alias test/)
 })
 
+test('codex command can report a Claude Code provider result', async () => {
+  process.env.DEVELOPER_ROOT = '/Users/ignacywielogorski/Developer'
+  const workspaceStore = createWorkspaceStore(openDatabase(':memory:'))
+  workspaceStore.upsertWorkspace('vibe', 'vibe-in-motion')
+  workspaceStore.setActiveWorkspace(12345, 'vibe')
+
+  const router = createCommandRouter({
+    workspaceStore,
+    codexRunner: async ({ prompt, workspacePath }) => ({
+      ok: true,
+      exitCode: 0,
+      message: `Prompt: ${prompt}\nPath: ${workspacePath}`,
+      output: '',
+      providerName: 'Claude Code'
+    })
+  })
+
+  const reply = await router.handleCommand({
+    chatId: 12345,
+    text: '/codex use another provider'
+  })
+
+  assert.match(reply, /Workspace: vibe/)
+  assert.match(reply, /Claude Code exit code: 0/)
+  assert.match(reply, /Prompt: use another provider/)
+})
+
 test('underscored codex ship alias uses the active workspace', async () => {
   process.env.DEVELOPER_ROOT = '/Users/ignacywielogorski/Developer'
   const workspaceStore = createWorkspaceStore(openDatabase(':memory:'))

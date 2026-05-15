@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { runCodexTask } from './integrations/codex'
+import { runCodeProviderTask, type CodeTaskRunner } from './integrations/code-provider'
 import { cloneGitHubRepo, rollbackGitLastCommit, shipGitChanges } from './integrations/git'
 import { watchGitHubDeployment } from './integrations/github'
 import { runShellCommand } from './integrations/shell'
@@ -14,7 +14,7 @@ type WorkspaceRecord = {
 
 type CommandRouterDependencies = {
   shellRunner?: typeof runShellCommand
-  codexRunner?: typeof runCodexTask
+  codexRunner?: CodeTaskRunner
   gitCloneRunner?: typeof cloneGitHubRepo
   gitShipRunner?: typeof shipGitChanges
   gitRollbackRunner?: typeof rollbackGitLastCommit
@@ -45,15 +45,15 @@ export const TELEGRAM_BOT_COMMANDS: TelegramBotCommand[] = [
   { command: 'repo_add', description: 'Save a workspace alias for an existing path' },
   { command: 'repo_set', description: 'Update a saved workspace alias path' },
   { command: 'repo_remove', description: 'Remove a saved workspace alias' },
-  { command: 'codex', description: 'Run Codex in the active workspace' },
-  { command: 'codex_ship', description: 'Run Codex, commit, push, and watch deploys' },
+  { command: 'codex', description: 'Run the code provider in the active workspace' },
+  { command: 'codex_ship', description: 'Run the code provider, commit, push, and watch deploys' },
   { command: 'rollback', description: 'Rollback the active branch by one commit' },
   { command: 'rb', description: 'Rollback the active branch by one commit' },
   { command: 'run', description: 'Run a command in the workspace' }
 ]
 
 export function createCommandRouter({
-  codexRunner = runCodexTask,
+  codexRunner = runCodeProviderTask,
   gitCloneRunner = cloneGitHubRepo,
   gitShipRunner = shipGitChanges,
   gitRollbackRunner = rollbackGitLastCommit,
@@ -170,7 +170,7 @@ async function handleCodexCommand({
 }: {
   args: string[]
   chatId: string | number
-  codexRunner: typeof runCodexTask
+  codexRunner: CodeTaskRunner
   workspaceStore: WorkspaceStore
 }) {
   const prompt = args.join(' ').trim()
@@ -192,7 +192,7 @@ async function handleCodexCommand({
 
   return [
     `Workspace: ${workspace.alias}`,
-    `Exit code: ${result.exitCode}`,
+    `${result.providerName || 'Codex'} exit code: ${result.exitCode}`,
     '',
     result.message
   ].join('\n')
@@ -209,7 +209,7 @@ async function handleCodexShipCommand({
 }: {
   args: string[]
   chatId: string | number
-  codexRunner: typeof runCodexTask
+  codexRunner: CodeTaskRunner
   gitShipRunner: typeof shipGitChanges
   deploymentWatcher: typeof watchGitHubDeployment
   notifyChat?: (chatId: string | number, message: string) => Promise<void>
@@ -227,17 +227,19 @@ async function handleCodexShipCommand({
     return 'No active workspace. Use /repo use <alias> first.'
   }
 
-  const codexResult = await codexRunner({
+  const codeResult = await codexRunner({
     prompt,
     workspacePath: workspace.path
   })
 
-  if (!codexResult.ok) {
+  const providerName = codeResult.providerName || 'Codex'
+
+  if (!codeResult.ok) {
     return [
       `Workspace: ${workspace.alias}`,
-      `Exit code: ${codexResult.exitCode}`,
+      `${providerName} exit code: ${codeResult.exitCode}`,
       '',
-      codexResult.message
+      codeResult.message
     ].join('\n')
   }
 
@@ -261,10 +263,10 @@ async function handleCodexShipCommand({
 
   return [
     `Workspace: ${workspace.alias}`,
-    `Codex exit code: ${codexResult.exitCode}`,
+    `${providerName} exit code: ${codeResult.exitCode}`,
     `Git exit code: ${gitResult.exitCode}`,
     '',
-    codexResult.message,
+    codeResult.message,
     '',
     gitResult.message,
     watchingMessage ? `\n${watchingMessage}` : ''

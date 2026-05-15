@@ -4,12 +4,23 @@ import path from 'node:path'
 
 import { runProcess, truncateText } from './process'
 
-export type CodexRunInput = {
+export type CodeTaskRunInput = {
   prompt: string
   workspacePath: string
 }
 
-export async function runCodexTask({ prompt, workspacePath }: CodexRunInput) {
+export type CodeTaskRunResult = {
+  ok: boolean
+  exitCode: number
+  message: string
+  output: string
+  providerName?: string
+}
+
+export async function runCodexTask({
+  prompt,
+  workspacePath
+}: CodeTaskRunInput): Promise<CodeTaskRunResult> {
   const outputFilePath = path.join(
     os.tmpdir(),
     `codex-output-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`
@@ -46,6 +57,7 @@ export async function runCodexTask({ prompt, workspacePath }: CodexRunInput) {
     ok: result.exitCode === 0,
     exitCode: result.exitCode,
     message: truncateText(finalMessage || result.output || 'Codex finished with no output.'),
-    output: truncateText(result.output || '')
+    output: truncateText(result.output || ''),
+    providerName: 'Codex'
   }
 }

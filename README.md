@@ -21,7 +21,7 @@ The agent listens on two secure channels:
 
 ### 2. Autonomous Code Generation
 
-Once the system verifies your phone number or email address against a strict allowlist, it passes your prompt directly into the **OpenAI Codex CLI** running in headless "automation mode." The AI scans your local code repository, locates the relevant files, and intelligently edits the source code to fulfill your request.
+Once the system verifies your phone number or email address against a strict allowlist, it passes your prompt directly into a configured coding-agent provider. The default provider is the **OpenAI Codex CLI** running in headless "automation mode"; **Claude Code** can also be selected. The AI scans your local code repository, locates the relevant files, and intelligently edits the source code to fulfill your request.
 
 ### 3. Automated Version Control
 
@@ -41,7 +41,9 @@ Finally, the server monitors the terminal output from the deployment. It fires a
 
 - **Node.js** (v18+) and **pnpm**
 - **Git** installed and configured
-- **OpenAI Codex CLI** installed globally: `npm install -g @openai/codex`
+- One coding-agent CLI installed globally:
+  - **OpenAI Codex CLI**: `npm install -g @openai/codex`
+  - **Claude Code CLI**: `npm install -g @anthropic-ai/claude-code` for `CODE_PROVIDER=claude`
 - **Kubernetes/kubectl** configured for your target cluster deployment
 - **Twilio Account** for WhatsApp routing
 - **Inbound Email Parser** (e.g., Postmark, SendGrid, or Mailgun) with custom domain MX records configured
@@ -102,11 +104,11 @@ Examples:
 /repo list
 ```
 
-### Codex Commands
+### Coding Agent Commands
 
-- `/codex <prompt>` runs `codex exec` in the active workspace without committing or pushing
+- `/codex <prompt>` runs the configured code provider in the active workspace without committing or pushing
 - `/c <prompt>` is a short alias for `/codex`
-- `/codex-ship <prompt>` runs `codex exec`, stages the resulting git changes, creates a commit message, commits, pushes, and watches GitHub deploy workflows
+- `/codex-ship <prompt>` runs the configured code provider, stages the resulting git changes, creates a commit message, commits, pushes, and watches GitHub deploy workflows
 - `/cs <prompt>` is a short alias for `/codex-ship`
 - `/rollback` moves the active branch back by one commit, pushes a backup branch for the removed commit, then force-with-lease pushes the rollback. If the worktree has uncommitted changes, it first commits those changes for safekeeping, backs up that commit, and resets to `HEAD~2`.
 - `/rb` is a short alias for `/rollback`
@@ -147,7 +149,11 @@ Examples:
 - `BOT_DB_PATH` SQLite database path for workspace and chat state
 - `RUN_COMMAND_ALLOWLIST_ENABLED` set to `true`, `1`, `yes`, or `on` to enforce `/run` prefix restrictions
 - `RUN_COMMAND_ALLOWLIST` comma-separated allowlist of `/run` command prefixes when allowlist mode is enabled
+- `CODE_PROVIDER` coding-agent provider, either `codex` or `claude`; defaults to `codex`
 - `CODEX_TIMEOUT_MS` timeout for `codex exec`
+- `CLAUDE_CODE_COMMAND` Claude Code executable name or path; defaults to `claude`
+- `CLAUDE_CODE_PERMISSION_MODE` Claude Code permission mode; defaults to `acceptEdits`
+- `CLAUDE_CODE_TIMEOUT_MS` timeout for Claude Code
 - `SHELL_TIMEOUT_MS` timeout for `/run` commands
 - `GIT_TIMEOUT_MS` timeout for commit and push steps
 
