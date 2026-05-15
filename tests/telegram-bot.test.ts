@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import { createCommandQueue } from '../src/command-queue'
 import { TELEGRAM_BOT_COMMANDS } from '../src/command-router'
 import { createTelegramClient, getIncomingMessage } from '../src/integrations/telegram'
 import { openDatabase } from '../src/storage/database'
@@ -51,6 +52,8 @@ test('handleUpdate acknowledges long-running commands before sending the result'
     workspaceStore
   })
 
+  await waitForMessages(sentMessages, 2)
+
   assert.equal(sentMessages.length, 2)
   assert.equal(sentMessages[0].chatId, 12345)
   assert.equal(sentMessages[0].text, 'Processing...')
@@ -81,6 +84,8 @@ test('handleUpdate acknowledges suggested underscored long-running commands', as
     logger: { log() {}, error() {} },
     workspaceStore
   })
+
+  await waitForMessages(sentMessages, 2)
 
   assert.equal(sentMessages.length, 2)
   assert.equal(sentMessages[0].chatId, 12345)
@@ -113,10 +118,48 @@ test('handleUpdate acknowledges rollback commands', async () => {
     workspaceStore
   })
 
+  await waitForMessages(sentMessages, 2)
+
   assert.equal(sentMessages.length, 2)
   assert.equal(sentMessages[0].chatId, 12345)
   assert.equal(sentMessages[0].text, 'Processing...')
   assert.match(sentMessages[1].text, /No active workspace/)
+})
+
+test('handleUpdate queues long-running commands behind active work', async () => {
+  process.env.ALLOWED_TELEGRAM_CHAT_IDS = '12345'
+
+  const commandQueue = createCommandQueue()
+  const sentMessages: Array<{ chatId: number; text: string }> = []
+  const telegramClient = {
+    sendMessage: async (payload: { chatId: number; text: string }) => {
+      sentMessages.push(payload)
+    }
+  }
+  const workspaceStore = createWorkspaceStore(openDatabase(':memory:'))
+
+  commandQueue.enqueue('busy', async () => {
+    await new Promise(() => {})
+  })
+
+  await handleUpdate({
+    commandQueue,
+    update: {
+      update_id: 105,
+      message: {
+        text: '/codex add queue support',
+        chat: { id: 12345 },
+        from: { id: 999, username: 'ignacy' }
+      }
+    },
+    telegramClient,
+    logger: { log() {}, error() {} },
+    workspaceStore
+  })
+
+  assert.equal(sentMessages.length, 1)
+  assert.equal(sentMessages[0].chatId, 12345)
+  assert.equal(sentMessages[0].text, 'Queued. Position: 1.')
 })
 
 test('handleUpdate rejects chats outside the allowlist', async () => {
@@ -182,3 +225,16 @@ test('createTelegramClient registers Telegram commands', async () => {
     commands: TELEGRAM_BOT_COMMANDS
   })
 })
+
+async function waitForMessages(
+  sentMessages: Array<{ chatId: number; text: string }>,
+  expectedCount: number
+) {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    if (sentMessages.length >= expectedCount) {
+      return
+    }
+
+    await new Promise(resolve => setImmediate(resolve))
+  }
+}

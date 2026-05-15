@@ -1,4 +1,5 @@
 import { isAllowedTelegramChat } from './integrations/auth'
+import { createCommandQueue, type CommandQueue } from './command-queue'
 import { createCommandRouter, TELEGRAM_BOT_COMMANDS } from './command-router'
 import {
   createTelegramClient,
@@ -13,12 +14,14 @@ type Logger = Pick<Console, 'log' | 'error'>
 type TelegramClient = ReturnType<typeof createTelegramClient>
 
 type StartTelegramBotOptions = {
+  commandQueue?: CommandQueue
   telegramClient?: TelegramClient
   logger?: Logger
   workspaceStore?: WorkspaceStore
 }
 
 type HandleUpdateOptions = {
+  commandQueue?: CommandQueue
   update: TelegramUpdate
   telegramClient: Pick<TelegramClient, 'sendMessage'>
   logger?: Logger
@@ -26,6 +29,7 @@ type HandleUpdateOptions = {
 }
 
 export async function startTelegramBot({
+  commandQueue = createCommandQueue(),
   telegramClient = createTelegramClient(),
   logger = console,
   workspaceStore = createWorkspaceStore(openDatabase())
@@ -45,7 +49,7 @@ export async function startTelegramBot({
 
       for (const update of updates) {
         offset = update.update_id + 1
-        await handleUpdate({ update, telegramClient, logger, workspaceStore })
+        await handleUpdate({ commandQueue, update, telegramClient, logger, workspaceStore })
       }
     } catch (error) {
       logger.error('Telegram polling failed')
@@ -56,6 +60,7 @@ export async function startTelegramBot({
 }
 
 export async function handleUpdate({
+  commandQueue = createCommandQueue(),
   update,
   telegramClient,
   logger = console,
@@ -88,11 +93,45 @@ export async function handleUpdate({
       })
     }
   })
+
   if (requiresImmediateAcknowledgement(message.text)) {
+    const queuedCommand = commandQueue.enqueue(message.text, async () => {
+      return await router.handleCommand({
+        chatId: message.chatId,
+        text: message.text
+      })
+    })
+
     await telegramClient.sendMessage({
       chatId: message.chatId,
-      text: 'Processing...'
+      text:
+        queuedCommand.queuedPosition === 0
+          ? 'Processing...'
+          : `Queued. Position: ${queuedCommand.queuedPosition}.`
     })
+
+    void queuedCommand.result
+      .then(async reply => {
+        await telegramClient.sendMessage({
+          chatId: message.chatId,
+          text: reply
+        })
+
+        logger.log(
+          `Processed queued Telegram update ${message.updateId} for chat ${message.chatId}`
+        )
+      })
+      .catch(async error => {
+        await telegramClient.sendMessage({
+          chatId: message.chatId,
+          text: error instanceof Error ? error.message : 'Command failed.'
+        })
+
+        logger.error(`Queued Telegram update ${message.updateId} failed`)
+        logger.error(error)
+      })
+
+    return
   }
 
   const reply = await router.handleCommand({
