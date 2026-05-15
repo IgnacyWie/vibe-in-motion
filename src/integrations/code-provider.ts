@@ -1,9 +1,8 @@
 import { runClaudeCodeTask } from './claude-code'
-import { runCodexTask, type CodeTaskRunInput, type CodeTaskRunResult } from './codex'
-
-export type CodeProvider = 'codex' | 'claude'
+import { runCodexTask, type CodeProvider, type CodeTaskRunInput, type CodeTaskRunResult } from './codex'
 
 export type CodeTaskRunner = (input: CodeTaskRunInput) => Promise<CodeTaskRunResult>
+export type { CodeProvider }
 
 export function getCodeProvider() {
   const provider = String(process.env.CODE_PROVIDER || 'codex').trim().toLowerCase()
@@ -20,7 +19,7 @@ export function getCodeProvider() {
 }
 
 export async function runCodeProviderTask(input: CodeTaskRunInput) {
-  return getCodeProvider() === 'claude'
+  return (input.provider || getCodeProvider()) === 'claude'
     ? await runClaudeCodeTask(input)
     : await runCodexTask(input)
 }

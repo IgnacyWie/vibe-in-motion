@@ -1,7 +1,12 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { runCodeProviderTask, type CodeTaskRunner } from './integrations/code-provider'
+import {
+  getCodeProvider,
+  runCodeProviderTask,
+  type CodeProvider,
+  type CodeTaskRunner
+} from './integrations/code-provider'
 import { cloneGitHubRepo, rollbackGitLastCommit, shipGitChanges } from './integrations/git'
 import { watchGitHubDeployment } from './integrations/github'
 import { runShellCommand } from './integrations/shell'
@@ -38,6 +43,8 @@ export const TELEGRAM_BOT_COMMANDS: TelegramBotCommand[] = [
   { command: 'help', description: 'Show available commands' },
   { command: 'status', description: 'Show the current chat status' },
   { command: 'whoami', description: 'Show your chat ID and active workspace' },
+  { command: 'provider', description: 'Show or switch the coding provider' },
+  { command: 'provider_use', description: 'Switch the coding provider' },
   { command: 'repo_list', description: 'List saved workspaces' },
   { command: 'repo_current', description: 'Show the active workspace' },
   { command: 'repo_pull', description: 'Clone and save a GitHub repo workspace' },
@@ -67,7 +74,10 @@ export function createCommandRouter({
       const trimmedText = text.trim()
 
       if (!trimmedText.startsWith('/')) {
-        return buildHelpMessage(workspaceStore.getActiveWorkspace(chatId))
+        return buildHelpMessage({
+          activeProvider: getActiveCodeProvider(chatId, workspaceStore),
+          activeWorkspace: workspaceStore.getActiveWorkspace(chatId)
+        })
       }
 
       try {
@@ -77,11 +87,28 @@ export function createCommandRouter({
         switch (command) {
           case '/help':
           case '/start':
-            return buildHelpMessage(workspaceStore.getActiveWorkspace(chatId))
+            return buildHelpMessage({
+              activeProvider: getActiveCodeProvider(chatId, workspaceStore),
+              activeWorkspace: workspaceStore.getActiveWorkspace(chatId)
+            })
           case '/whoami':
-            return buildWhoAmIMessage(chatId, workspaceStore.getActiveWorkspace(chatId))
+            return buildWhoAmIMessage({
+              activeProvider: getActiveCodeProvider(chatId, workspaceStore),
+              activeWorkspace: workspaceStore.getActiveWorkspace(chatId),
+              chatId
+            })
           case '/status':
-            return buildStatusMessage(chatId, workspaceStore.getActiveWorkspace(chatId))
+            return buildStatusMessage({
+              activeProvider: getActiveCodeProvider(chatId, workspaceStore),
+              activeWorkspace: workspaceStore.getActiveWorkspace(chatId),
+              chatId
+            })
+          case '/provider':
+            return handleProviderCommand({
+              args,
+              chatId,
+              workspaceStore
+            })
           case '/repo':
             return await handleRepoCommand({
               args,
@@ -126,7 +153,10 @@ export function createCommandRouter({
               workspaceStore
             })
           default:
-            return `Unknown command: ${command}\n\n${buildHelpMessage(workspaceStore.getActiveWorkspace(chatId))}`
+            return `Unknown command: ${command}\n\n${buildHelpMessage({
+              activeProvider: getActiveCodeProvider(chatId, workspaceStore),
+              activeWorkspace: workspaceStore.getActiveWorkspace(chatId)
+            })}`
         }
       } catch (error) {
         return error instanceof Error ? error.message : 'Command failed.'
@@ -180,6 +210,7 @@ async function handleCodexCommand({
   }
 
   const workspace = workspaceStore.getActiveWorkspace(chatId)
+  const provider = getActiveCodeProvider(chatId, workspaceStore)
 
   if (!workspace) {
     return 'No active workspace. Use /repo use <alias> first.'
@@ -187,6 +218,7 @@ async function handleCodexCommand({
 
   const result = await codexRunner({
     prompt,
+    provider,
     workspacePath: workspace.path
   })
 
@@ -222,6 +254,7 @@ async function handleCodexShipCommand({
   }
 
   const workspace = workspaceStore.getActiveWorkspace(chatId)
+  const provider = getActiveCodeProvider(chatId, workspaceStore)
 
   if (!workspace) {
     return 'No active workspace. Use /repo use <alias> first.'
@@ -229,6 +262,7 @@ async function handleCodexShipCommand({
 
   const codeResult = await codexRunner({
     prompt,
+    provider,
     workspacePath: workspace.path
   })
 
@@ -397,7 +431,14 @@ async function handleRepoCommand({
       workspaceStore.setActiveWorkspace(chatId, workspace.alias)
 
       if (notifyChat) {
-        await notifyChat(chatId, buildStatusMessage(chatId, workspace))
+        await notifyChat(
+          chatId,
+          buildStatusMessage({
+            activeProvider: getActiveCodeProvider(chatId, workspaceStore),
+            activeWorkspace: workspace,
+            chatId
+          })
+        )
       }
 
       return [
@@ -484,15 +525,52 @@ async function handleRepoCommand({
   }
 }
 
-function buildHelpMessage(activeWorkspace: WorkspaceRecord | null) {
+function handleProviderCommand({
+  args,
+  chatId,
+  workspaceStore
+}: {
+  args: string[]
+  chatId: string | number
+  workspaceStore: WorkspaceStore
+}) {
+  const subcommand = args[0]
+
+  if (!subcommand || subcommand === 'current') {
+    return `Current code provider: ${getActiveCodeProvider(chatId, workspaceStore)}`
+  }
+
+  const provider = subcommand === 'use' || subcommand === 'set'
+    ? args[1]
+    : subcommand
+
+  if (!provider) {
+    return 'Usage: /provider use <codex|claude>'
+  }
+
+  workspaceStore.setActiveCodeProvider(chatId, provider)
+
+  return `Code provider set to ${getActiveCodeProvider(chatId, workspaceStore)}`
+}
+
+function buildHelpMessage({
+  activeProvider,
+  activeWorkspace
+}: {
+  activeProvider: CodeProvider
+  activeWorkspace: WorkspaceRecord | null
+}) {
   return [
     'Telegram coding bot',
     activeWorkspace
       ? `Active workspace: ${activeWorkspace.alias} (${activeWorkspace.path})`
       : 'Active workspace: none',
+    `Code provider: ${activeProvider}`,
     '',
     '/whoami',
     '/status',
+    '/provider current',
+    '/provider use <codex|claude>',
     '/repo list',
     '/repo current',
     '/repo pull <owner>/<repo> [alias]',
@@ -559,21 +637,39 @@ function startDeploymentWatch({
   return `Watching GitHub Actions for commit ${commitSha}.`
 }
 
-function buildStatusMessage(chatId: string | number, activeWorkspace: WorkspaceRecord | null) {
+function buildStatusMessage({
+  activeProvider,
+  activeWorkspace,
+  chatId
+}: {
+  activeProvider: CodeProvider
+  activeWorkspace: WorkspaceRecord | null
+  chatId: string | number
+}) {
   return [
     `Chat ID: ${chatId}`,
     activeWorkspace
       ? `Active workspace: ${activeWorkspace.alias}`
-      : 'Active workspace: none'
+      : 'Active workspace: none',
+    `Code provider: ${activeProvider}`
   ].join('\n')
 }
 
-function buildWhoAmIMessage(chatId: string | number, activeWorkspace: WorkspaceRecord | null) {
+function buildWhoAmIMessage({
+  activeProvider,
+  activeWorkspace,
+  chatId
+}: {
+  activeProvider: CodeProvider
+  activeWorkspace: WorkspaceRecord | null
+  chatId: string | number
+}) {
   return [
     `Chat ID: ${chatId}`,
     activeWorkspace
       ? `Workspace: ${activeWorkspace.alias}\nPath: ${activeWorkspace.path}`
-      : 'Workspace: none'
+      : 'Workspace: none',
+    `Code provider: ${activeProvider}`
   ].join('\n')
 }
 
@@ -599,9 +695,15 @@ function expandCommandAlias(rawCommand: string | undefined, args: string[]) {
       return { command: '/repo', args: ['set', ...args] }
     case '/repo_remove':
       return { command: '/repo', args: ['remove', ...args] }
+    case '/provider_use':
+      return { command: '/provider', args: ['use', ...args] }
     default:
       return { command, args }
   }
+}
+
+function getActiveCodeProvider(chatId: string | number, workspaceStore: WorkspaceStore) {
+  return workspaceStore.getActiveCodeProvider(chatId) || getCodeProvider()
 }
 
 function normalizeCommand(command: string | undefined) {

@@ -4,8 +4,11 @@ import path from 'node:path'
 
 import { runProcess, truncateText } from './process'
 
+export type CodeProvider = 'codex' | 'claude'
+
 export type CodeTaskRunInput = {
   prompt: string
+  provider?: CodeProvider
   workspacePath: string
 }
 

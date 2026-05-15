@@ -71,7 +71,10 @@ test('repo pull clones a GitHub slug over ssh and selects the workspace', async 
   assert.match(reply, /Alias: vibe-in-motion/)
   assert.match(reply, /Remote: git@github\.com:IgnacyWie\/vibe-in-motion\.git/)
   assert.equal(notifications.length, 1)
-  assert.equal(notifications[0], 'Chat ID: 12345\nActive workspace: vibe-in-motion')
+  assert.equal(
+    notifications[0],
+    'Chat ID: 12345\nActive workspace: vibe-in-motion\nCode provider: codex'
+  )
 
   const activeWorkspace = workspaceStore.getActiveWorkspace(12345)
   assert.equal(activeWorkspace?.alias, 'vibe-in-motion')
@@ -267,6 +270,62 @@ test('codex command can report a Claude Code provider result', async () => {
   assert.match(reply, /Workspace: vibe/)
   assert.match(reply, /Claude Code exit code: 0/)
   assert.match(reply, /Prompt: use another provider/)
+})
+
+test('provider command switches the active code provider for the chat', async () => {
+  process.env.DEVELOPER_ROOT = '/Users/ignacywielogorski/Developer'
+  const workspaceStore = createWorkspaceStore(openDatabase(':memory:'))
+  workspaceStore.upsertWorkspace('vibe', 'vibe-in-motion')
+  workspaceStore.setActiveWorkspace(12345, 'vibe')
+  const calls: Array<{ provider?: string; prompt: string; workspacePath: string }> = []
+
+  const router = createCommandRouter({
+    workspaceStore,
+    codexRunner: async input => {
+      calls.push(input)
+
+      return {
+        ok: true,
+        exitCode: 0,
+        message: `Provider: ${input.provider}`,
+        output: '',
+        providerName: input.provider === 'claude' ? 'Claude Code' : 'Codex'
+      }
+    }
+  })
+
+  const switchReply = await router.handleCommand({
+    chatId: 12345,
+    text: '/provider use claude'
+  })
+
+  const codexReply = await router.handleCommand({
+    chatId: 12345,
+    text: '/codex add provider support'
+  })
+
+  assert.equal(switchReply, 'Code provider set to claude')
+  assert.equal(calls[0].provider, 'claude')
+  assert.match(codexReply, /Claude Code exit code: 0/)
+  assert.match(codexReply, /Provider: claude/)
+})
+
+test('provider command supports codex shorthand and current status', async () => {
+  const workspaceStore = createWorkspaceStore(openDatabase(':memory:'))
+  const router = createCommandRouter({ workspaceStore })
+
+  const switchReply = await router.handleCommand({
+    chatId: 12345,
+    text: '/provider codex'
+  })
+
+  const currentReply = await router.handleCommand({
+    chatId: 12345,
+    text: '/provider current'
+  })
+
+  assert.equal(switchReply, 'Code provider set to codex')
+  assert.equal(currentReply, 'Current code provider: codex')
 })
 
 test('underscored codex ship alias uses the active workspace', async () => {

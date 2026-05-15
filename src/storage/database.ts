@@ -36,4 +36,12 @@ function migrate(database: Database) {
       FOREIGN KEY(active_workspace_alias) REFERENCES workspaces(alias) ON DELETE SET NULL
     );
   `)
+
+  const chatStateColumns = database
+    .prepare('PRAGMA table_info(chat_state)')
+    .all() as Array<{ name: string }>
+
+  if (!chatStateColumns.some(column => column.name === 'active_code_provider')) {
+    database.exec('ALTER TABLE chat_state ADD COLUMN active_code_provider TEXT')
+  }
 }

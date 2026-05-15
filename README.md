@@ -77,7 +77,10 @@ Example:
 - `/help` shows the available bot commands
 - `/start` shows the same help output
 - `/whoami` shows your Telegram chat ID and the currently selected workspace
-- `/status` shows your Telegram chat ID and active workspace alias
+- `/status` shows your Telegram chat ID, active workspace alias, and active code provider
+- `/provider current` shows the active code provider for this chat
+- `/provider use <codex|claude>` switches future coding-agent runs in this chat
+- `/provider <codex|claude>` is a shorter switch form
 
 Telegram command suggestions are registered automatically on bot startup. Because Telegram only suggests command names without spaces and does not allow hyphens in command names, the bot exposes suggestion-friendly aliases such as `/repo_list`, `/repo_use`, and `/codex_ship` in addition to the original forms.
 
@@ -117,8 +120,10 @@ Examples:
 Examples:
 
 ```text
+/provider use claude
 /codex Add a /health route for the API server
 /c Add a setup command
+/provider codex
 /codex-ship Add a README section describing setup commands
 /cs Ship a fix for the deploy watcher
 /rollback

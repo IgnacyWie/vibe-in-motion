@@ -1,5 +1,6 @@
 import path from 'node:path'
 
+import type { CodeProvider } from '../integrations/code-provider'
 import type { Database } from './database'
 
 export type WorkspaceRecord = {
@@ -54,11 +55,23 @@ export function createWorkspaceStore(database: Database) {
     JOIN workspaces w ON w.alias = c.active_workspace_alias
     WHERE c.chat_id = ?
   `)
+  const getActiveCodeProviderStatement = database.prepare(`
+    SELECT active_code_provider
+    FROM chat_state
+    WHERE chat_id = ?
+  `)
   const setActiveWorkspaceStatement = database.prepare(`
     INSERT INTO chat_state (chat_id, active_workspace_alias, updated_at)
     VALUES (?, ?, CURRENT_TIMESTAMP)
     ON CONFLICT(chat_id) DO UPDATE SET
       active_workspace_alias = excluded.active_workspace_alias,
+      updated_at = CURRENT_TIMESTAMP
+  `)
+  const setActiveCodeProviderStatement = database.prepare(`
+    INSERT INTO chat_state (chat_id, active_code_provider, updated_at)
+    VALUES (?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(chat_id) DO UPDATE SET
+      active_code_provider = excluded.active_code_provider,
       updated_at = CURRENT_TIMESTAMP
   `)
   const clearActiveWorkspaceStatement = database.prepare(`
@@ -80,6 +93,15 @@ export function createWorkspaceStore(database: Database) {
         (getActiveWorkspaceStatement.get(String(chatId)) as WorkspaceRecord | undefined) || null
       )
     },
+    getActiveCodeProvider(chatId: string | number) {
+      const row = getActiveCodeProviderStatement.get(String(chatId)) as
+        | { active_code_provider?: string | null }
+        | undefined
+
+      return row?.active_code_provider
+        ? normalizeCodeProvider(row.active_code_provider)
+        : null
+    },
     getWorkspace(alias: string) {
       return (
         (getWorkspaceStatement.get(normalizeAlias(alias)) as WorkspaceRecord | undefined) || null
@@ -90,6 +112,9 @@ export function createWorkspaceStore(database: Database) {
     },
     setActiveWorkspace(chatId: string | number, alias: string) {
       setActiveWorkspaceStatement.run(String(chatId), normalizeAlias(alias))
+    },
+    setActiveCodeProvider(chatId: string | number, provider: string) {
+      setActiveCodeProviderStatement.run(String(chatId), normalizeCodeProvider(provider))
     },
     upsertWorkspace(alias: string, workspacePath: string) {
       const normalizedAlias = normalizeAlias(alias)
@@ -103,6 +128,20 @@ export function createWorkspaceStore(database: Database) {
       }
     }
   }
+}
+
+function normalizeCodeProvider(provider: string): CodeProvider {
+  const normalizedProvider = String(provider || '').trim().toLowerCase()
+
+  if (normalizedProvider === 'claude' || normalizedProvider === 'claude-code' || normalizedProvider === 'claude_code') {
+    return 'claude'
+  }
+
+  if (normalizedProvider === 'codex') {
+    return 'codex'
+  }
+
+  throw new Error('Code provider must be one of: codex, claude.')
 }
 
 function normalizeAlias(alias: string) {
