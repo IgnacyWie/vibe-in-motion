@@ -1,9 +1,14 @@
 type QueuedTask<T> = {
   id: string
   label: string
+  queueKey: string
   run: () => Promise<T>
   resolve: (value: T) => void
   reject: (error: unknown) => void
+}
+
+type QueueOptions = {
+  queueKey?: string
 }
 
 type QueueState = {
@@ -14,13 +19,15 @@ type QueueState = {
 export type CommandQueue = ReturnType<typeof createCommandQueue>
 
 export function createCommandQueue() {
-  const queue: Array<QueuedTask<unknown>> = []
-  let activeTask: QueuedTask<unknown> | null = null
+  const queues = new Map<string, Array<QueuedTask<unknown>>>()
+  const activeTasks = new Map<string, QueuedTask<unknown>>()
   let nextId = 1
 
-  function enqueue<T>(label: string, run: () => Promise<T>) {
+  function enqueue<T>(label: string, run: () => Promise<T>, options: QueueOptions = {}) {
     const id = `cmd_${nextId++}`
-    const queuedPosition = activeTask ? queue.length + 1 : 0
+    const queueKey = normalizeQueueKey(options.queueKey)
+    const queue = getQueue(queueKey)
+    const queuedPosition = activeTasks.has(queueKey) ? queue.length + 1 : 0
     let resolveTask!: (value: T) => void
     let rejectTask!: (error: unknown) => void
 
@@ -32,16 +39,18 @@ export function createCommandQueue() {
     queue.push({
       id,
       label,
+      queueKey,
       run: run as () => Promise<unknown>,
       resolve: resolveTask as (value: unknown) => void,
       reject: rejectTask
     })
 
-    void drain()
+    void drain(queueKey)
 
     return {
       id,
       label,
+      queueKey,
       queuedPosition,
       result
     }
@@ -49,36 +58,56 @@ export function createCommandQueue() {
 
   function getState(): QueueState {
     return {
-      active: Boolean(activeTask),
-      pending: queue.length
+      active: activeTasks.size > 0,
+      pending: Array.from(queues.values()).reduce((total, queue) => total + queue.length, 0)
     }
   }
 
-  async function drain() {
-    if (activeTask) {
+  async function drain(queueKey: string) {
+    if (activeTasks.has(queueKey)) {
       return
     }
 
+    const queue = getQueue(queueKey)
     const task = queue.shift()
 
     if (!task) {
+      queues.delete(queueKey)
       return
     }
 
-    activeTask = task
+    activeTasks.set(queueKey, task)
 
     try {
       task.resolve(await task.run())
     } catch (error) {
       task.reject(error)
     } finally {
-      activeTask = null
-      void drain()
+      activeTasks.delete(queueKey)
+      void drain(queueKey)
     }
+  }
+
+  function getQueue(queueKey: string) {
+    const existingQueue = queues.get(queueKey)
+
+    if (existingQueue) {
+      return existingQueue
+    }
+
+    const queue: Array<QueuedTask<unknown>> = []
+    queues.set(queueKey, queue)
+    return queue
   }
 
   return {
     enqueue,
     getState
   }
+}
+
+function normalizeQueueKey(queueKey: string | undefined) {
+  const normalizedQueueKey = String(queueKey || '').trim()
+
+  return normalizedQueueKey || 'default'
 }

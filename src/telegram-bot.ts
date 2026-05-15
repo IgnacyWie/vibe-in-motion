@@ -95,12 +95,20 @@ export async function handleUpdate({
   })
 
   if (requiresImmediateAcknowledgement(message.text)) {
-    const queuedCommand = commandQueue.enqueue(message.text, async () => {
-      return await router.handleCommand({
-        chatId: message.chatId,
-        text: message.text
-      })
-    })
+    const activeWorkspace = workspaceStore.getActiveWorkspace(message.chatId)
+    const queuedCommand = commandQueue.enqueue(
+      message.text,
+      async () => {
+        return await router.handleCommand({
+          activeWorkspace,
+          chatId: message.chatId,
+          text: message.text
+        })
+      },
+      {
+        queueKey: activeWorkspace?.path
+      }
+    )
 
     await telegramClient.sendMessage({
       chatId: message.chatId,

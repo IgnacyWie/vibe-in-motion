@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import test from 'node:test'
 
 import { createCommandQueue } from '../src/command-queue'
@@ -160,6 +163,52 @@ test('handleUpdate queues long-running commands behind active work', async () =>
   assert.equal(sentMessages.length, 1)
   assert.equal(sentMessages[0].chatId, 12345)
   assert.equal(sentMessages[0].text, 'Queued. Position: 1.')
+})
+
+test('handleUpdate does not queue commands behind active work in another workspace', async () => {
+  process.env.ALLOWED_TELEGRAM_CHAT_IDS = '12345'
+  const developerRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-developer-'))
+  const workspaceA = path.join(developerRoot, 'workspace-a')
+  const workspaceB = path.join(developerRoot, 'workspace-b')
+  fs.mkdirSync(workspaceA)
+  fs.mkdirSync(workspaceB)
+  process.env.DEVELOPER_ROOT = developerRoot
+
+  const commandQueue = createCommandQueue()
+  const sentMessages: Array<{ chatId: number; text: string }> = []
+  const telegramClient = {
+    sendMessage: async (payload: { chatId: number; text: string }) => {
+      sentMessages.push(payload)
+    }
+  }
+  const workspaceStore = createWorkspaceStore(openDatabase(':memory:'))
+  workspaceStore.upsertWorkspace('a', 'workspace-a')
+  workspaceStore.upsertWorkspace('b', 'workspace-b')
+  workspaceStore.setActiveWorkspace(12345, 'b')
+
+  commandQueue.enqueue('busy-a', async () => {
+    await new Promise(() => {})
+  }, {
+    queueKey: workspaceA
+  })
+
+  await handleUpdate({
+    commandQueue,
+    update: {
+      update_id: 106,
+      message: {
+        text: '/run pwd',
+        chat: { id: 12345 },
+        from: { id: 999, username: 'ignacy' }
+      }
+    },
+    telegramClient,
+    logger: { log() {}, error() {} },
+    workspaceStore
+  })
+
+  assert.equal(sentMessages[0].chatId, 12345)
+  assert.equal(sentMessages[0].text, 'Processing...')
 })
 
 test('handleUpdate rejects chats outside the allowlist', async () => {

@@ -30,6 +30,7 @@ type CommandRouterDependencies = {
 
 type CommandContext = {
   chatId: string | number
+  activeWorkspace?: WorkspaceRecord | null
   text: string
 }
 
@@ -70,7 +71,11 @@ export function createCommandRouter({
   workspaceStore
 }: CommandRouterDependencies) {
   return {
-    async handleCommand({ chatId, text }: CommandContext) {
+    async handleCommand({
+      activeWorkspace: contextActiveWorkspace,
+      chatId,
+      text
+    }: CommandContext) {
       const trimmedText = text.trim()
 
       if (!trimmedText.startsWith('/')) {
@@ -121,6 +126,7 @@ export function createCommandRouter({
           case '/c':
             return await handleCodexCommand({
               args,
+              activeWorkspace: contextActiveWorkspace,
               chatId,
               codexRunner,
               workspaceStore
@@ -130,6 +136,7 @@ export function createCommandRouter({
           case '/cs':
             return await handleCodexShipCommand({
               args,
+              activeWorkspace: contextActiveWorkspace,
               chatId,
               codexRunner,
               gitShipRunner,
@@ -140,6 +147,7 @@ export function createCommandRouter({
           case '/rollback':
           case '/rb':
             return await handleRollbackCommand({
+              activeWorkspace: contextActiveWorkspace,
               chatId,
               gitRollbackRunner,
               workspaceStore
@@ -148,6 +156,7 @@ export function createCommandRouter({
           case '/r':
             return await handleRunCommand({
               args,
+              activeWorkspace: contextActiveWorkspace,
               chatId,
               shellRunner,
               workspaceStore
@@ -166,15 +175,17 @@ export function createCommandRouter({
 }
 
 async function handleRollbackCommand({
+  activeWorkspace,
   chatId,
   gitRollbackRunner,
   workspaceStore
 }: {
+  activeWorkspace?: WorkspaceRecord | null
   chatId: string | number
   gitRollbackRunner: typeof rollbackGitLastCommit
   workspaceStore: WorkspaceStore
 }) {
-  const workspace = workspaceStore.getActiveWorkspace(chatId)
+  const workspace = getCommandWorkspace({ activeWorkspace, chatId, workspaceStore })
 
   if (!workspace) {
     return 'No active workspace. Use /repo use <alias> first.'
@@ -193,11 +204,13 @@ async function handleRollbackCommand({
 }
 
 async function handleCodexCommand({
+  activeWorkspace,
   args,
   chatId,
   codexRunner,
   workspaceStore
 }: {
+  activeWorkspace?: WorkspaceRecord | null
   args: string[]
   chatId: string | number
   codexRunner: CodeTaskRunner
@@ -209,7 +222,7 @@ async function handleCodexCommand({
     return 'Usage: /codex <prompt>'
   }
 
-  const workspace = workspaceStore.getActiveWorkspace(chatId)
+  const workspace = getCommandWorkspace({ activeWorkspace, chatId, workspaceStore })
   const provider = getActiveCodeProvider(chatId, workspaceStore)
 
   if (!workspace) {
@@ -231,6 +244,7 @@ async function handleCodexCommand({
 }
 
 async function handleCodexShipCommand({
+  activeWorkspace,
   args,
   chatId,
   codexRunner,
@@ -239,6 +253,7 @@ async function handleCodexShipCommand({
   notifyChat,
   workspaceStore
 }: {
+  activeWorkspace?: WorkspaceRecord | null
   args: string[]
   chatId: string | number
   codexRunner: CodeTaskRunner
@@ -253,7 +268,7 @@ async function handleCodexShipCommand({
     return 'Usage: /codex-ship <prompt>'
   }
 
-  const workspace = workspaceStore.getActiveWorkspace(chatId)
+  const workspace = getCommandWorkspace({ activeWorkspace, chatId, workspaceStore })
   const provider = getActiveCodeProvider(chatId, workspaceStore)
 
   if (!workspace) {
@@ -308,11 +323,13 @@ async function handleCodexShipCommand({
 }
 
 async function handleRunCommand({
+  activeWorkspace,
   args,
   chatId,
   shellRunner,
   workspaceStore
 }: {
+  activeWorkspace?: WorkspaceRecord | null
   args: string[]
   chatId: string | number
   shellRunner: typeof runShellCommand
@@ -324,7 +341,7 @@ async function handleRunCommand({
     return 'Usage: /run <command>'
   }
 
-  const workspace = workspaceStore.getActiveWorkspace(chatId)
+  const workspace = getCommandWorkspace({ activeWorkspace, chatId, workspaceStore })
 
   if (!workspace) {
     return 'No active workspace. Use /repo use <alias> first.'
@@ -704,6 +721,20 @@ function expandCommandAlias(rawCommand: string | undefined, args: string[]) {
 
 function getActiveCodeProvider(chatId: string | number, workspaceStore: WorkspaceStore) {
   return workspaceStore.getActiveCodeProvider(chatId) || getCodeProvider()
+}
+
+function getCommandWorkspace({
+  activeWorkspace,
+  chatId,
+  workspaceStore
+}: {
+  activeWorkspace?: WorkspaceRecord | null
+  chatId: string | number
+  workspaceStore: WorkspaceStore
+}) {
+  return activeWorkspace === undefined
+    ? workspaceStore.getActiveWorkspace(chatId)
+    : activeWorkspace
 }
 
 function normalizeCommand(command: string | undefined) {

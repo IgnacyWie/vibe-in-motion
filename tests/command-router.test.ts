@@ -220,6 +220,33 @@ test('codex command uses the active workspace', async () => {
   assert.match(reply, /Prompt: add a help command/)
 })
 
+test('codex command can use a captured workspace while chat state changes', async () => {
+  process.env.DEVELOPER_ROOT = '/Users/ignacywielogorski/Developer'
+  const workspaceStore = createWorkspaceStore(openDatabase(':memory:'))
+  const capturedWorkspace = workspaceStore.upsertWorkspace('vibe', 'vibe-in-motion')
+  workspaceStore.upsertWorkspace('api', 'my-api')
+  workspaceStore.setActiveWorkspace(12345, 'api')
+
+  const router = createCommandRouter({
+    workspaceStore,
+    codexRunner: async ({ workspacePath }) => ({
+      ok: true,
+      exitCode: 0,
+      message: `Path: ${workspacePath}`,
+      output: ''
+    })
+  })
+
+  const reply = await router.handleCommand({
+    activeWorkspace: capturedWorkspace,
+    chatId: 12345,
+    text: '/codex keep the original workspace'
+  })
+
+  assert.match(reply, /Workspace: vibe/)
+  assert.match(reply, /Path: \/Users\/ignacywielogorski\/Developer\/vibe-in-motion/)
+})
+
 test('short codex alias uses the active workspace', async () => {
   process.env.DEVELOPER_ROOT = '/Users/ignacywielogorski/Developer'
   const workspaceStore = createWorkspaceStore(openDatabase(':memory:'))
