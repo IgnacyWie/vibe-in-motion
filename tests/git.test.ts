@@ -33,15 +33,30 @@ test('rollbackGitLastCommit backs up HEAD, resets one commit, and force pushes',
   assert.equal(remoteBackup, secondCommit)
 })
 
-test('rollbackGitLastCommit refuses a dirty worktree', async () => {
-  const { workspacePath } = await createRepoWithTwoPushedCommits()
+test('rollbackGitLastCommit preserves a dirty worktree commit and resets two commits', async () => {
+  const { remotePath, workspacePath } = await createRepoWithTwoPushedCommits()
+  const firstCommit = await gitOutput(['rev-parse', 'HEAD~1'], workspacePath)
   fs.appendFileSync(path.join(workspacePath, 'app.txt'), '\ndirty change\n')
 
   const result = await rollbackGitLastCommit({ workspacePath })
 
-  assert.equal(result.ok, false)
-  assert.equal(result.exitCode, 1)
-  assert.match(result.message, /worktree has uncommitted changes/)
+  assert.equal(result.ok, true)
+  assert.equal(result.exitCode, 0)
+  assert.equal(result.branch, 'main')
+  assert.ok(result.preservedCommitSha)
+  assert.equal(result.rolledBackFrom, result.preservedCommitSha)
+  assert.equal(result.rolledBackTo, firstCommit)
+
+  const localHead = await gitOutput(['rev-parse', 'HEAD'], workspacePath)
+  const remoteMain = await gitOutput(['rev-parse', 'main'], remotePath)
+  const remoteBackup = await gitOutput(['rev-parse', result.backupBranch || ''], remotePath)
+  const backupContent = await gitOutput(['show', `${result.backupBranch}:app.txt`], remotePath)
+
+  assert.equal(localHead, firstCommit)
+  assert.equal(remoteMain, firstCommit)
+  assert.equal(remoteBackup, result.preservedCommitSha)
+  assert.match(backupContent, /dirty change/)
+  assert.match(result.message, /Preserved uncommitted changes in:/)
 })
 
 async function createRepoWithTwoPushedCommits() {

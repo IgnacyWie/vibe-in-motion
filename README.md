@@ -108,7 +108,7 @@ Examples:
 - `/c <prompt>` is a short alias for `/codex`
 - `/codex-ship <prompt>` runs `codex exec`, stages the resulting git changes, creates a commit message, commits, pushes, and watches GitHub deploy workflows
 - `/cs <prompt>` is a short alias for `/codex-ship`
-- `/rollback` moves the active branch back by one commit, pushes a backup branch for the removed commit, then force-with-lease pushes the rollback
+- `/rollback` moves the active branch back by one commit, pushes a backup branch for the removed commit, then force-with-lease pushes the rollback. If the worktree has uncommitted changes, it first commits those changes for safekeeping, backs up that commit, and resets to `HEAD~2`.
 - `/rb` is a short alias for `/rollback`
 - Suggested alias: `/codex_ship <prompt>`
 

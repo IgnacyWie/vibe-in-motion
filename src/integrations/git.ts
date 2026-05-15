@@ -35,6 +35,7 @@ export type GitRollbackResult = {
   message: string
   branch?: string
   backupBranch?: string
+  preservedCommitSha?: string
   rolledBackFrom?: string
   rolledBackTo?: string
 }
@@ -125,22 +126,33 @@ export async function rollbackGitLastCommit({
   await assertGitRepo(workspacePath, timeoutMs)
 
   const changedFiles = await getChangedFiles(workspacePath, timeoutMs)
+  const branch = await getCurrentBranch(workspacePath, timeoutMs)
+
+  let preservedCommitSha: string | undefined
 
   if (changedFiles.length > 0) {
-    return {
-      ok: false,
-      exitCode: 1,
-      message: [
-        'Rollback refused because the worktree has uncommitted changes.',
-        'Commit, stash, or discard them before rolling back.',
-        `Files: ${changedFiles.join(', ')}`
-      ].join('\n')
+    const commitResult = await commitRollbackWorktreeChanges(workspacePath, timeoutMs)
+
+    if (commitResult.exitCode !== 0) {
+      return {
+        ok: false,
+        exitCode: commitResult.exitCode,
+        branch,
+        message: [
+          'Rollback stopped because uncommitted changes could not be preserved in a commit.',
+          `Files: ${changedFiles.join(', ')}`,
+          '',
+          truncateText(commitResult.output || 'git commit failed.')
+        ].join('\n')
+      }
     }
+
+    preservedCommitSha = await getCommitSha(workspacePath, timeoutMs)
   }
 
-  const branch = await getCurrentBranch(workspacePath, timeoutMs)
   const rolledBackFrom = await getCommitSha(workspacePath, timeoutMs)
-  const rolledBackTo = await getRevisionSha(workspacePath, 'HEAD~1', timeoutMs)
+  const rollbackRevision = preservedCommitSha ? 'HEAD~2' : 'HEAD~1'
+  const rolledBackTo = await getRevisionSha(workspacePath, rollbackRevision, timeoutMs)
   const backupBranch = buildRollbackBranchName(branch, rolledBackFrom)
   const createBranchResult = await runGit(['branch', backupBranch, rolledBackFrom], workspacePath, timeoutMs)
 
@@ -150,6 +162,7 @@ export async function rollbackGitLastCommit({
       exitCode: createBranchResult.exitCode,
       branch,
       backupBranch,
+      preservedCommitSha,
       rolledBackFrom,
       rolledBackTo,
       message: truncateText(createBranchResult.output || 'Could not create rollback backup branch.')
@@ -168,6 +181,7 @@ export async function rollbackGitLastCommit({
       exitCode: pushBackupResult.exitCode,
       branch,
       backupBranch,
+      preservedCommitSha,
       rolledBackFrom,
       rolledBackTo,
       message: [
@@ -186,6 +200,7 @@ export async function rollbackGitLastCommit({
       exitCode: resetResult.exitCode,
       branch,
       backupBranch,
+      preservedCommitSha,
       rolledBackFrom,
       rolledBackTo,
       message: truncateText(resetResult.output || 'git reset --hard failed.')
@@ -203,10 +218,12 @@ export async function rollbackGitLastCommit({
     exitCode: pushRollbackResult.exitCode,
     branch,
     backupBranch,
+    preservedCommitSha,
     rolledBackFrom,
     rolledBackTo,
     message: [
       `Branch: ${branch}`,
+      ...(preservedCommitSha ? [`Preserved uncommitted changes in: ${preservedCommitSha}`] : []),
       `Rolled back from: ${rolledBackFrom}`,
       `Rolled back to: ${rolledBackTo}`,
       `Backup branch: ${backupBranch}`,
@@ -214,6 +231,19 @@ export async function rollbackGitLastCommit({
       truncateText(pushRollbackResult.output || 'git push rollback finished.')
     ].join('\n')
   }
+}
+
+async function commitRollbackWorktreeChanges(workspacePath: string, timeoutMs: number) {
+  const addResult = await runGit(['add', '-A'], workspacePath, timeoutMs)
+
+  if (addResult.exitCode !== 0) {
+    return addResult
+  }
+
+  const changedFiles = await getStagedFiles(workspacePath, timeoutMs)
+  const commitMessage = buildCommitMessage('preserve uncommitted changes before rollback', changedFiles)
+
+  return await runGit(['commit', '-m', commitMessage], workspacePath, timeoutMs)
 }
 
 async function assertGitRepo(workspacePath: string, timeoutMs: number) {
