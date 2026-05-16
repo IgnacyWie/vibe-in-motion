@@ -6,6 +6,7 @@ import test from 'node:test'
 
 import { getCodeProvider } from '../src/integrations/code-provider'
 import { runClaudeCodeTask } from '../src/integrations/claude-code'
+import { runCodexTask } from '../src/integrations/codex'
 
 test('code provider defaults to codex', () => {
   const originalProvider = process.env.CODE_PROVIDER
@@ -68,6 +69,51 @@ test('Claude Code runner invokes the configured command in the workspace', async
   }
 })
 
+test('Codex runner attaches image paths with --image', async () => {
+  const originalPath = process.env.PATH
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-codex-'))
+  const binPath = path.join(tempDir, 'bin')
+  const workspacePath = path.join(tempDir, 'workspace')
+  const commandPath = path.join(binPath, 'codex')
+  const imagePath = path.join(tempDir, 'photo.jpg')
+
+  fs.mkdirSync(binPath)
+  fs.mkdirSync(workspacePath)
+  fs.writeFileSync(imagePath, 'image')
+  fs.writeFileSync(
+    commandPath,
+    [
+      '#!/bin/sh',
+      'output_file=""',
+      'previous_arg=""',
+      'for arg in "$@"; do',
+      '  if [ "$previous_arg" = "-o" ]; then',
+      '    output_file="$arg"',
+      '  fi',
+      '  previous_arg="$arg"',
+      'done',
+      'printf "%s\\n" "$@" > "$output_file"'
+    ].join('\n')
+  )
+  fs.chmodSync(commandPath, 0o755)
+  process.env.PATH = `${binPath}${path.delimiter}${originalPath || ''}`
+
+  try {
+    const result = await runCodexTask({
+      imagePaths: [imagePath],
+      prompt: 'match this screenshot',
+      workspacePath
+    })
+
+    assert.equal(result.ok, true)
+    assert.match(result.message, /--image/)
+    assert.match(result.message, new RegExp(escapeRegExp(imagePath)))
+    assert.match(result.message, /match this screenshot/)
+  } finally {
+    restoreEnv('PATH', originalPath)
+  }
+})
+
 function restoreEnv(name: string, value: string | undefined) {
   if (value === undefined) {
     delete process.env[name]
@@ -75,4 +121,8 @@ function restoreEnv(name: string, value: string | undefined) {
   }
 
   process.env[name] = value
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }

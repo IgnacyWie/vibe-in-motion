@@ -220,6 +220,75 @@ test('codex command uses the active workspace', async () => {
   assert.match(reply, /Prompt: add a help command/)
 })
 
+test('codex command passes attached image paths to the code provider', async () => {
+  process.env.DEVELOPER_ROOT = '/Users/ignacywielogorski/Developer'
+  const workspaceStore = createWorkspaceStore(openDatabase(':memory:'))
+  workspaceStore.upsertWorkspace('vibe', 'vibe-in-motion')
+  workspaceStore.setActiveWorkspace(12345, 'vibe')
+  const calls: Array<{ imagePaths?: string[]; prompt: string; workspacePath: string }> = []
+
+  const router = createCommandRouter({
+    workspaceStore,
+    codexRunner: async input => {
+      calls.push(input)
+
+      return {
+        ok: true,
+        exitCode: 0,
+        message: 'Codex done.',
+        output: ''
+      }
+    }
+  })
+
+  const reply = await router.handleCommand({
+    chatId: 12345,
+    imagePaths: ['/tmp/photo-1.jpg'],
+    text: '/codex match this screenshot'
+  })
+
+  assert.match(reply, /Workspace: vibe/)
+  assert.equal(calls.length, 1)
+  assert.deepEqual(calls[0].imagePaths, ['/tmp/photo-1.jpg'])
+  assert.equal(calls[0].prompt, 'match this screenshot')
+})
+
+test('codex-ship command passes attached image paths to the code provider', async () => {
+  process.env.DEVELOPER_ROOT = '/Users/ignacywielogorski/Developer'
+  const workspaceStore = createWorkspaceStore(openDatabase(':memory:'))
+  workspaceStore.upsertWorkspace('vibe', 'vibe-in-motion')
+  workspaceStore.setActiveWorkspace(12345, 'vibe')
+  const calls: Array<{ imagePaths?: string[] }> = []
+
+  const router = createCommandRouter({
+    workspaceStore,
+    codexRunner: async input => {
+      calls.push(input)
+
+      return {
+        ok: true,
+        exitCode: 0,
+        message: 'Codex done.',
+        output: ''
+      }
+    },
+    gitShipRunner: async () => ({
+      ok: true,
+      exitCode: 0,
+      message: 'Pushed.'
+    })
+  })
+
+  const reply = await router.handleCommand({
+    chatId: 12345,
+    imagePaths: ['/tmp/photo-1.jpg'],
+    text: '/codex-ship ship this screenshot fix'
+  })
+
+  assert.match(reply, /Codex exit code: 0/)
+  assert.deepEqual(calls[0].imagePaths, ['/tmp/photo-1.jpg'])
+})
+
 test('codex command can use a captured workspace while chat state changes', async () => {
   process.env.DEVELOPER_ROOT = '/Users/ignacywielogorski/Developer'
   const workspaceStore = createWorkspaceStore(openDatabase(':memory:'))

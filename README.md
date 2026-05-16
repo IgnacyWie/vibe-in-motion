@@ -130,6 +130,8 @@ Examples:
 /rb
 ```
 
+You can also send a Telegram photo with a `/codex`, `/c`, `/codex-ship`, or `/cs` caption. The bot downloads the largest Telegram photo variant and passes it to Codex as an image attachment, so screenshots and visual references are included with the prompt.
+
 ### Shell Commands
 
 - `/run <command>` runs a command inside the active workspace

@@ -26,7 +26,44 @@ test('getIncomingMessage extracts a text message update', () => {
     chatId: 12345,
     fromId: 999,
     fromUsername: 'ignacy',
+    photoFileIds: [],
     text: 'Ship it'
+  })
+})
+
+test('getIncomingMessage extracts a photo caption and largest photo file id', () => {
+  const message = getIncomingMessage({
+    update_id: 107,
+    message: {
+      caption: '/codex match this screenshot',
+      chat: { id: 12345 },
+      from: { id: 999, username: 'ignacy' },
+      photo: [
+        {
+          file_id: 'small-photo',
+          file_unique_id: 'small',
+          width: 90,
+          height: 90,
+          file_size: 1000
+        },
+        {
+          file_id: 'large-photo',
+          file_unique_id: 'large',
+          width: 1280,
+          height: 960,
+          file_size: 9000
+        }
+      ]
+    }
+  })
+
+  assert.deepEqual(message, {
+    updateId: 107,
+    chatId: 12345,
+    fromId: 999,
+    fromUsername: 'ignacy',
+    photoFileIds: ['large-photo'],
+    text: '/codex match this screenshot'
   })
 })
 
@@ -273,6 +310,51 @@ test('createTelegramClient registers Telegram commands', async () => {
   assert.deepEqual(JSON.parse(calls[0].body), {
     commands: TELEGRAM_BOT_COMMANDS
   })
+})
+
+test('createTelegramClient downloads Telegram files', async () => {
+  const calls: Array<{ url: string; body?: string }> = []
+  const telegramClient = createTelegramClient({
+    token: 'test-token',
+    fetchImpl: async (url, init) => {
+      calls.push({
+        url: String(url),
+        body: init?.body ? String(init.body) : undefined
+      })
+
+      if (String(url).endsWith('/getFile')) {
+        return {
+          ok: true,
+          async json() {
+            return {
+              ok: true,
+              result: {
+                file_id: 'file-1',
+                file_unique_id: 'unique-1',
+                file_path: 'photos/file-1.jpg'
+              }
+            }
+          }
+        } as Response
+      }
+
+      return {
+        ok: true,
+        async arrayBuffer() {
+          return Buffer.from('image-bytes').buffer
+        }
+      } as Response
+    }
+  })
+
+  const file = await telegramClient.getFile('file-1')
+  const contents = await telegramClient.downloadFile(file.file_path || '')
+
+  assert.equal(file.file_path, 'photos/file-1.jpg')
+  assert.equal(contents.includes(Buffer.from('image-bytes')), true)
+  assert.equal(calls[0].url, 'https://api.telegram.org/bottest-token/getFile')
+  assert.deepEqual(JSON.parse(calls[0].body || '{}'), { file_id: 'file-1' })
+  assert.equal(calls[1].url, 'https://api.telegram.org/file/bottest-token/photos/file-1.jpg')
 })
 
 async function waitForMessages(

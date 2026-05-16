@@ -16,12 +16,29 @@ type TelegramUser = {
   username?: string
 }
 
+type TelegramPhotoSize = {
+  file_id: string
+  file_unique_id: string
+  width: number
+  height: number
+  file_size?: number
+}
+
 type TelegramMessage = {
+  caption?: string
+  photo?: TelegramPhotoSize[]
   text?: string
   chat?: {
     id: number
   }
   from?: TelegramUser
+}
+
+type TelegramFile = {
+  file_id: string
+  file_unique_id: string
+  file_path?: string
+  file_size?: number
 }
 
 export type TelegramUpdate = {
@@ -34,6 +51,7 @@ export type ParsedIncomingMessage = {
   chatId: number
   fromId?: number
   fromUsername?: string
+  photoFileIds: string[]
   text: string
 }
 
@@ -91,6 +109,22 @@ export function createTelegramClient({
     return callTelegramApi<TelegramUser>('getMe', {})
   }
 
+  async function getFile(fileId: string) {
+    return callTelegramApi<TelegramFile>('getFile', {
+      file_id: fileId
+    })
+  }
+
+  async function downloadFile(filePath: string) {
+    const response = await fetchImpl(`${baseUrl}/file/bot${token}/${filePath}`)
+
+    if (!response.ok) {
+      throw new Error(`Telegram file download failed with status ${response.status}`)
+    }
+
+    return Buffer.from(await response.arrayBuffer())
+  }
+
   async function callTelegramApi<TResult>(method: string, payload: object): Promise<TResult> {
     const response = await fetchImpl(`${baseUrl}/bot${token}/${method}`, {
       method: 'POST',
@@ -114,6 +148,8 @@ export function createTelegramClient({
   }
 
   return {
+    downloadFile,
+    getFile,
     getMe,
     getUpdates,
     setMyCommands,
@@ -123,8 +159,9 @@ export function createTelegramClient({
 
 export function getIncomingMessage(update: TelegramUpdate): ParsedIncomingMessage | null {
   const message = update?.message
+  const text = message?.text || message?.caption
 
-  if (!message || typeof message.text !== 'string' || !message.chat?.id) {
+  if (!message || typeof text !== 'string' || !message.chat?.id) {
     return null
   }
 
@@ -133,6 +170,22 @@ export function getIncomingMessage(update: TelegramUpdate): ParsedIncomingMessag
     chatId: message.chat.id,
     fromId: message.from?.id,
     fromUsername: message.from?.username,
-    text: message.text
+    photoFileIds: getLargestPhotoFileIds(message.photo),
+    text
   }
+}
+
+function getLargestPhotoFileIds(photoSizes: TelegramPhotoSize[] | undefined) {
+  if (!photoSizes || photoSizes.length === 0) {
+    return []
+  }
+
+  return [
+    [...photoSizes].sort((a, b) => {
+      const aSize = a.file_size || a.width * a.height
+      const bSize = b.file_size || b.width * b.height
+
+      return bSize - aSize
+    })[0].file_id
+  ]
 }

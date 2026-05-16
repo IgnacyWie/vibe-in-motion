@@ -31,6 +31,7 @@ type CommandRouterDependencies = {
 type CommandContext = {
   chatId: string | number
   activeWorkspace?: WorkspaceRecord | null
+  imagePaths?: string[]
   text: string
 }
 
@@ -74,6 +75,7 @@ export function createCommandRouter({
     async handleCommand({
       activeWorkspace: contextActiveWorkspace,
       chatId,
+      imagePaths = [],
       text
     }: CommandContext) {
       const trimmedText = text.trim()
@@ -129,6 +131,7 @@ export function createCommandRouter({
               activeWorkspace: contextActiveWorkspace,
               chatId,
               codexRunner,
+              imagePaths,
               workspaceStore
             })
           case '/codex-ship':
@@ -141,6 +144,7 @@ export function createCommandRouter({
               codexRunner,
               gitShipRunner,
               deploymentWatcher,
+              imagePaths,
               notifyChat,
               workspaceStore
             })
@@ -208,12 +212,14 @@ async function handleCodexCommand({
   args,
   chatId,
   codexRunner,
+  imagePaths,
   workspaceStore
 }: {
   activeWorkspace?: WorkspaceRecord | null
   args: string[]
   chatId: string | number
   codexRunner: CodeTaskRunner
+  imagePaths: string[]
   workspaceStore: WorkspaceStore
 }) {
   const prompt = args.join(' ').trim()
@@ -232,6 +238,7 @@ async function handleCodexCommand({
   const result = await codexRunner({
     prompt,
     provider,
+    imagePaths,
     workspacePath: workspace.path
   })
 
@@ -250,6 +257,7 @@ async function handleCodexShipCommand({
   codexRunner,
   gitShipRunner,
   deploymentWatcher,
+  imagePaths,
   notifyChat,
   workspaceStore
 }: {
@@ -259,6 +267,7 @@ async function handleCodexShipCommand({
   codexRunner: CodeTaskRunner
   gitShipRunner: typeof shipGitChanges
   deploymentWatcher: typeof watchGitHubDeployment
+  imagePaths: string[]
   notifyChat?: (chatId: string | number, message: string) => Promise<void>
   workspaceStore: WorkspaceStore
 }) {
@@ -278,6 +287,7 @@ async function handleCodexShipCommand({
   const codeResult = await codexRunner({
     prompt,
     provider,
+    imagePaths,
     workspacePath: workspace.path
   })
 

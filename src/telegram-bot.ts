@@ -1,3 +1,7 @@
+import fs from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+
 import { isAllowedTelegramChat } from './integrations/auth'
 import { createCommandQueue, type CommandQueue } from './command-queue'
 import { createCommandRouter, TELEGRAM_BOT_COMMANDS } from './command-router'
@@ -23,7 +27,8 @@ type StartTelegramBotOptions = {
 type HandleUpdateOptions = {
   commandQueue?: CommandQueue
   update: TelegramUpdate
-  telegramClient: Pick<TelegramClient, 'sendMessage'>
+  telegramClient: Pick<TelegramClient, 'sendMessage'> &
+    Partial<Pick<TelegramClient, 'downloadFile' | 'getFile'>>
   logger?: Logger
   workspaceStore: WorkspaceStore
 }
@@ -93,17 +98,23 @@ export async function handleUpdate({
       })
     }
   })
+  const imagePaths = await downloadMessagePhotos(message, telegramClient)
 
   if (requiresImmediateAcknowledgement(message.text)) {
     const activeWorkspace = workspaceStore.getActiveWorkspace(message.chatId)
     const queuedCommand = commandQueue.enqueue(
       message.text,
       async () => {
-        return await router.handleCommand({
-          activeWorkspace,
-          chatId: message.chatId,
-          text: message.text
-        })
+        try {
+          return await router.handleCommand({
+            activeWorkspace,
+            chatId: message.chatId,
+            imagePaths,
+            text: message.text
+          })
+        } finally {
+          await removeDownloadedPhotos(imagePaths)
+        }
       },
       {
         queueKey: activeWorkspace?.path
@@ -144,8 +155,11 @@ export async function handleUpdate({
 
   const reply = await router.handleCommand({
     chatId: message.chatId,
+    imagePaths,
     text: message.text
   })
+
+  await removeDownloadedPhotos(imagePaths)
 
   await telegramClient.sendMessage({
     chatId: message.chatId,
@@ -167,6 +181,55 @@ function sleep(durationMs: number) {
   return new Promise(resolve => {
     setTimeout(resolve, durationMs)
   })
+}
+
+async function downloadMessagePhotos(
+  message: ParsedIncomingMessage,
+  telegramClient: Pick<TelegramClient, 'sendMessage'> &
+    Partial<Pick<TelegramClient, 'downloadFile' | 'getFile'>>
+) {
+  if (message.photoFileIds.length === 0) {
+    return []
+  }
+
+  if (!telegramClient.getFile || !telegramClient.downloadFile) {
+    throw new Error('Telegram client cannot download photo attachments.')
+  }
+
+  const imagePaths: string[] = []
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vibe-telegram-photo-'))
+
+  try {
+    for (const [index, fileId] of message.photoFileIds.entries()) {
+      const file = await telegramClient.getFile(fileId)
+
+      if (!file.file_path) {
+        throw new Error('Telegram did not return a downloadable file path for the photo.')
+      }
+
+      const fileBuffer = await telegramClient.downloadFile(file.file_path)
+      const imagePath = path.join(
+        tempDir,
+        `photo-${index + 1}${path.extname(file.file_path) || '.jpg'}`
+      )
+
+      await fs.writeFile(imagePath, fileBuffer)
+      imagePaths.push(imagePath)
+    }
+
+    return imagePaths
+  } catch (error) {
+    await fs.rm(tempDir, { force: true, recursive: true })
+    throw error
+  }
+}
+
+async function removeDownloadedPhotos(imagePaths: string[]) {
+  const directories = new Set(imagePaths.map(imagePath => path.dirname(imagePath)))
+
+  for (const directory of directories) {
+    await fs.rm(directory, { force: true, recursive: true })
+  }
 }
 
 function requiresImmediateAcknowledgement(text: string) {

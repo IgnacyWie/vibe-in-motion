@@ -7,6 +7,7 @@ import { runProcess, truncateText } from './process'
 export type CodeProvider = 'codex' | 'claude'
 
 export type CodeTaskRunInput = {
+  imagePaths?: string[]
   prompt: string
   provider?: CodeProvider
   workspacePath: string
@@ -21,6 +22,7 @@ export type CodeTaskRunResult = {
 }
 
 export async function runCodexTask({
+  imagePaths = [],
   prompt,
   workspacePath
 }: CodeTaskRunInput): Promise<CodeTaskRunResult> {
@@ -37,9 +39,14 @@ export async function runCodexTask({
     '-s',
     'workspace-write',
     '-o',
-    outputFilePath,
-    prompt
+    outputFilePath
   ]
+
+  for (const imagePath of imagePaths) {
+    args.push('--image', imagePath)
+  }
+
+  args.push(prompt)
 
   const result = await runProcess({
     command: 'codex',
