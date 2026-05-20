@@ -40,6 +40,12 @@ export type GitRollbackResult = {
   rolledBackTo?: string
 }
 
+export type GitPullResult = {
+  ok: boolean
+  exitCode: number
+  message: string
+}
+
 export async function cloneGitHubRepo({
   destinationPath,
   repoSlug
@@ -53,6 +59,20 @@ export async function cloneGitHubRepo({
     exitCode: result.exitCode,
     remoteUrl,
     message: truncateText(result.output || 'git clone finished.')
+  }
+}
+
+export async function pullGitChanges(workspacePath: string): Promise<GitPullResult> {
+  const timeoutMs = Number(process.env.GIT_TIMEOUT_MS || 5 * 60 * 1000)
+
+  await assertGitRepo(workspacePath, timeoutMs)
+
+  const result = await runGit(['pull'], workspacePath, timeoutMs)
+
+  return {
+    ok: result.exitCode === 0,
+    exitCode: result.exitCode,
+    message: truncateText(result.output || 'git pull finished.')
   }
 }
 

@@ -8,6 +8,12 @@ import { createCommandRouter, TELEGRAM_BOT_COMMANDS } from '../src/command-route
 import { openDatabase } from '../src/storage/database'
 import { createWorkspaceStore } from '../src/storage/workspace-store'
 
+const successfulGitPull = async () => ({
+  ok: true,
+  exitCode: 0,
+  message: 'Already up to date.'
+})
+
 test('repo commands persist workspaces and allow selecting them', async () => {
   process.env.DEVELOPER_ROOT = '/Users/ignacywielogorski/Developer'
   const workspaceStore = createWorkspaceStore(openDatabase(':memory:'))
@@ -203,6 +209,7 @@ test('codex command uses the active workspace', async () => {
 
   const router = createCommandRouter({
     workspaceStore,
+    gitPullRunner: successfulGitPull,
     codexRunner: async ({ prompt, workspacePath }) => ({
       ok: true,
       exitCode: 0,
@@ -229,6 +236,7 @@ test('codex command passes attached image paths to the code provider', async () 
 
   const router = createCommandRouter({
     workspaceStore,
+    gitPullRunner: successfulGitPull,
     codexRunner: async input => {
       calls.push(input)
 
@@ -262,6 +270,7 @@ test('codex-ship command passes attached image paths to the code provider', asyn
 
   const router = createCommandRouter({
     workspaceStore,
+    gitPullRunner: successfulGitPull,
     codexRunner: async input => {
       calls.push(input)
 
@@ -298,6 +307,7 @@ test('codex command can use a captured workspace while chat state changes', asyn
 
   const router = createCommandRouter({
     workspaceStore,
+    gitPullRunner: successfulGitPull,
     codexRunner: async ({ workspacePath }) => ({
       ok: true,
       exitCode: 0,
@@ -324,6 +334,7 @@ test('short codex alias uses the active workspace', async () => {
 
   const router = createCommandRouter({
     workspaceStore,
+    gitPullRunner: successfulGitPull,
     codexRunner: async ({ prompt, workspacePath }) => ({
       ok: true,
       exitCode: 0,
@@ -349,6 +360,7 @@ test('codex command can report a Claude Code provider result', async () => {
 
   const router = createCommandRouter({
     workspaceStore,
+    gitPullRunner: successfulGitPull,
     codexRunner: async ({ prompt, workspacePath }) => ({
       ok: true,
       exitCode: 0,
@@ -377,6 +389,7 @@ test('provider command switches the active code provider for the chat', async ()
 
   const router = createCommandRouter({
     workspaceStore,
+    gitPullRunner: successfulGitPull,
     codexRunner: async input => {
       calls.push(input)
 
@@ -424,6 +437,85 @@ test('provider command supports codex shorthand and current status', async () =>
   assert.equal(currentReply, 'Current code provider: codex')
 })
 
+test('codex command pulls the active workspace before running codex', async () => {
+  process.env.DEVELOPER_ROOT = '/Users/ignacywielogorski/Developer'
+  const workspaceStore = createWorkspaceStore(openDatabase(':memory:'))
+  workspaceStore.upsertWorkspace('vibe', 'vibe-in-motion')
+  workspaceStore.setActiveWorkspace(12345, 'vibe')
+
+  const calls: string[] = []
+  const router = createCommandRouter({
+    workspaceStore,
+    gitPullRunner: async workspacePath => {
+      calls.push(`pull:${workspacePath}`)
+
+      return {
+        ok: true,
+        exitCode: 0,
+        message: 'Already up to date.'
+      }
+    },
+    codexRunner: async ({ workspacePath }) => {
+      calls.push(`codex:${workspacePath}`)
+
+      return {
+        ok: true,
+        exitCode: 0,
+        message: 'Codex done.',
+        output: ''
+      }
+    }
+  })
+
+  const reply = await router.handleCommand({
+    chatId: 12345,
+    text: '/c add an alias test'
+  })
+
+  assert.deepEqual(calls, [
+    'pull:/Users/ignacywielogorski/Developer/vibe-in-motion',
+    'codex:/Users/ignacywielogorski/Developer/vibe-in-motion'
+  ])
+  assert.match(reply, /Git pull exit code: 0/)
+  assert.match(reply, /Codex done\./)
+})
+
+test('codex command stops before codex when git pull fails', async () => {
+  process.env.DEVELOPER_ROOT = '/Users/ignacywielogorski/Developer'
+  const workspaceStore = createWorkspaceStore(openDatabase(':memory:'))
+  workspaceStore.upsertWorkspace('vibe', 'vibe-in-motion')
+  workspaceStore.setActiveWorkspace(12345, 'vibe')
+
+  let codexCalled = false
+  const router = createCommandRouter({
+    workspaceStore,
+    gitPullRunner: async () => ({
+      ok: false,
+      exitCode: 1,
+      message: 'fatal: could not pull'
+    }),
+    codexRunner: async () => {
+      codexCalled = true
+
+      return {
+        ok: true,
+        exitCode: 0,
+        message: 'Codex done.',
+        output: ''
+      }
+    }
+  })
+
+  const reply = await router.handleCommand({
+    chatId: 12345,
+    text: '/c add an alias test'
+  })
+
+  assert.equal(codexCalled, false)
+  assert.match(reply, /Git pull exit code: 1/)
+  assert.match(reply, /fatal: could not pull/)
+})
+
 test('underscored codex ship alias uses the active workspace', async () => {
   process.env.DEVELOPER_ROOT = '/Users/ignacywielogorski/Developer'
   const workspaceStore = createWorkspaceStore(openDatabase(':memory:'))
@@ -432,6 +524,7 @@ test('underscored codex ship alias uses the active workspace', async () => {
 
   const router = createCommandRouter({
     workspaceStore,
+    gitPullRunner: successfulGitPull,
     codexRunner: async ({ prompt, workspacePath }) => ({
       ok: true,
       exitCode: 0,
@@ -463,6 +556,68 @@ test('underscored codex ship alias uses the active workspace', async () => {
   assert.match(reply, /Codex exit code: 0/)
   assert.match(reply, /Git exit code: 0/)
   assert.match(reply, /Watching GitHub Actions for commit ghi789\./)
+})
+
+test('codex-ship command pulls the active workspace before running codex', async () => {
+  process.env.DEVELOPER_ROOT = '/Users/ignacywielogorski/Developer'
+  const workspaceStore = createWorkspaceStore(openDatabase(':memory:'))
+  workspaceStore.upsertWorkspace('vibe', 'vibe-in-motion')
+  workspaceStore.setActiveWorkspace(12345, 'vibe')
+
+  const calls: string[] = []
+  const router = createCommandRouter({
+    workspaceStore,
+    gitPullRunner: async workspacePath => {
+      calls.push(`pull:${workspacePath}`)
+
+      return {
+        ok: true,
+        exitCode: 0,
+        message: 'Already up to date.'
+      }
+    },
+    codexRunner: async ({ workspacePath }) => {
+      calls.push(`codex:${workspacePath}`)
+
+      return {
+        ok: true,
+        exitCode: 0,
+        message: 'Codex done.',
+        output: ''
+      }
+    },
+    gitShipRunner: async input => {
+      calls.push(`ship:${input.workspacePath}`)
+
+      return {
+        ok: true,
+        exitCode: 0,
+        branch: 'main',
+        commitSha: 'ghi789',
+        message: 'Pushed.'
+      }
+    },
+    deploymentWatcher: async input => ({
+      commitSha: input.commitSha,
+      conclusion: 'success',
+      name: 'deploy',
+      url: 'https://github.com/example/repo/actions/runs/3'
+    }),
+    notifyChat: async () => {}
+  })
+
+  const reply = await router.handleCommand({
+    chatId: 12345,
+    text: '/cs ship via alias'
+  })
+
+  assert.deepEqual(calls, [
+    'pull:/Users/ignacywielogorski/Developer/vibe-in-motion',
+    'codex:/Users/ignacywielogorski/Developer/vibe-in-motion',
+    'ship:/Users/ignacywielogorski/Developer/vibe-in-motion'
+  ])
+  assert.match(reply, /Git pull exit code: 0/)
+  assert.match(reply, /Git exit code: 0/)
 })
 
 test('run command uses the active workspace cwd', async () => {
@@ -608,6 +763,7 @@ test('codex-ship starts a deployment watcher after a successful push', async () 
   const watcherCalls: Array<{ branch: string; commitSha: string; workspacePath: string }> = []
   const router = createCommandRouter({
     workspaceStore,
+    gitPullRunner: successfulGitPull,
     codexRunner: async () => ({
       ok: true,
       exitCode: 0,
@@ -660,6 +816,7 @@ test('short codex-ship alias starts a deployment watcher after a successful push
   const watcherCalls: Array<{ branch: string; commitSha: string; workspacePath: string }> = []
   const router = createCommandRouter({
     workspaceStore,
+    gitPullRunner: successfulGitPull,
     codexRunner: async () => ({
       ok: true,
       exitCode: 0,

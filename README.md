@@ -109,9 +109,9 @@ Examples:
 
 ### Coding Agent Commands
 
-- `/codex <prompt>` runs the configured code provider in the active workspace without committing or pushing
+- `/codex <prompt>` runs `git pull`, then the configured code provider in the active workspace without committing or pushing
 - `/c <prompt>` is a short alias for `/codex`
-- `/codex-ship <prompt>` runs the configured code provider, stages the resulting git changes, creates a commit message, commits, pushes, and watches GitHub deploy workflows
+- `/codex-ship <prompt>` runs `git pull`, then the configured code provider, stages the resulting git changes, creates a commit message, commits, pushes, and watches GitHub deploy workflows
 - `/cs <prompt>` is a short alias for `/codex-ship`
 - `/rollback` moves the active branch back by one commit, pushes a backup branch for the removed commit, then force-with-lease pushes the rollback. If the worktree has uncommitted changes, it first commits those changes for safekeeping, backs up that commit, and resets to `HEAD~2`.
 - `/rb` is a short alias for `/rollback`

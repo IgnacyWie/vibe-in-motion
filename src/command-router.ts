@@ -7,7 +7,7 @@ import {
   type CodeProvider,
   type CodeTaskRunner
 } from './integrations/code-provider'
-import { cloneGitHubRepo, rollbackGitLastCommit, shipGitChanges } from './integrations/git'
+import { cloneGitHubRepo, pullGitChanges, rollbackGitLastCommit, shipGitChanges } from './integrations/git'
 import { watchGitHubDeployment } from './integrations/github'
 import { runShellCommand } from './integrations/shell'
 import { resolveWorkspacePath, type WorkspaceStore } from './storage/workspace-store'
@@ -21,6 +21,7 @@ type CommandRouterDependencies = {
   shellRunner?: typeof runShellCommand
   codexRunner?: CodeTaskRunner
   gitCloneRunner?: typeof cloneGitHubRepo
+  gitPullRunner?: typeof pullGitChanges
   gitShipRunner?: typeof shipGitChanges
   gitRollbackRunner?: typeof rollbackGitLastCommit
   deploymentWatcher?: typeof watchGitHubDeployment
@@ -64,6 +65,7 @@ export const TELEGRAM_BOT_COMMANDS: TelegramBotCommand[] = [
 export function createCommandRouter({
   codexRunner = runCodeProviderTask,
   gitCloneRunner = cloneGitHubRepo,
+  gitPullRunner = pullGitChanges,
   gitShipRunner = shipGitChanges,
   gitRollbackRunner = rollbackGitLastCommit,
   deploymentWatcher = watchGitHubDeployment,
@@ -132,6 +134,7 @@ export function createCommandRouter({
               chatId,
               codexRunner,
               imagePaths,
+              gitPullRunner,
               workspaceStore
             })
           case '/codex-ship':
@@ -142,6 +145,7 @@ export function createCommandRouter({
               activeWorkspace: contextActiveWorkspace,
               chatId,
               codexRunner,
+              gitPullRunner,
               gitShipRunner,
               deploymentWatcher,
               imagePaths,
@@ -213,6 +217,7 @@ async function handleCodexCommand({
   chatId,
   codexRunner,
   imagePaths,
+  gitPullRunner,
   workspaceStore
 }: {
   activeWorkspace?: WorkspaceRecord | null
@@ -220,6 +225,7 @@ async function handleCodexCommand({
   chatId: string | number
   codexRunner: CodeTaskRunner
   imagePaths: string[]
+  gitPullRunner: typeof pullGitChanges
   workspaceStore: WorkspaceStore
 }) {
   const prompt = args.join(' ').trim()
@@ -235,6 +241,17 @@ async function handleCodexCommand({
     return 'No active workspace. Use /repo use <alias> first.'
   }
 
+  const pullResult = await gitPullRunner(workspace.path)
+
+  if (!pullResult.ok) {
+    return [
+      `Workspace: ${workspace.alias}`,
+      `Git pull exit code: ${pullResult.exitCode}`,
+      '',
+      pullResult.message
+    ].join('\n')
+  }
+
   const result = await codexRunner({
     prompt,
     provider,
@@ -244,6 +261,7 @@ async function handleCodexCommand({
 
   return [
     `Workspace: ${workspace.alias}`,
+    `Git pull exit code: ${pullResult.exitCode}`,
     `${result.providerName || 'Codex'} exit code: ${result.exitCode}`,
     '',
     result.message
@@ -255,6 +273,7 @@ async function handleCodexShipCommand({
   args,
   chatId,
   codexRunner,
+  gitPullRunner,
   gitShipRunner,
   deploymentWatcher,
   imagePaths,
@@ -265,6 +284,7 @@ async function handleCodexShipCommand({
   args: string[]
   chatId: string | number
   codexRunner: CodeTaskRunner
+  gitPullRunner: typeof pullGitChanges
   gitShipRunner: typeof shipGitChanges
   deploymentWatcher: typeof watchGitHubDeployment
   imagePaths: string[]
@@ -282,6 +302,17 @@ async function handleCodexShipCommand({
 
   if (!workspace) {
     return 'No active workspace. Use /repo use <alias> first.'
+  }
+
+  const pullResult = await gitPullRunner(workspace.path)
+
+  if (!pullResult.ok) {
+    return [
+      `Workspace: ${workspace.alias}`,
+      `Git pull exit code: ${pullResult.exitCode}`,
+      '',
+      pullResult.message
+    ].join('\n')
   }
 
   const codeResult = await codexRunner({
@@ -322,6 +353,7 @@ async function handleCodexShipCommand({
 
   return [
     `Workspace: ${workspace.alias}`,
+    `Git pull exit code: ${pullResult.exitCode}`,
     `${providerName} exit code: ${codeResult.exitCode}`,
     `Git exit code: ${gitResult.exitCode}`,
     '',
